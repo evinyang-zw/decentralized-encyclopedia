@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>去中心化百科 — Decentralized Encyclopedia</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>去中心化百科</h1>
+        <div id="agent-status" class="agent-bar"></div>
+    </header>
+    <main>
+        <section class="query-section">
+            <textarea id="query-input" placeholder="输入跨领域问题..."></textarea>
+            <button id="send-btn" onclick="sendQuery()">发送查询</button>
+        </section>
+        <section class="process-section">
+            <h3>通信过程</h3>
+            <div id="process-log" class="log"></div>
+        </section>
+        <section class="result-section">
+            <h3>最终回答</h3>
+            <div id="answer" class="answer"></div>
+        </section>
+    </main>
+    <script src="/static/app.js"></script>
+</body>
+</html>

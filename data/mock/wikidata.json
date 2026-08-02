@@ -1,0 +1,18 @@
+{
+  "Albert Einstein": {
+    "type": "Person",
+    "birth": "1879-03-14",
+    "death": "1955-04-18",
+    "occupation": "Physicist",
+    "employer": ["ETH Zurich", "Princeton University"],
+    "known_for": ["Theory of Relativity", "Photoelectric Effect"],
+    "awards": ["Nobel Prize in Physics (1921)"]
+  },
+  "Python (programming language)": {
+    "type": "ProgrammingLanguage",
+    "creator": "Guido van Rossum",
+    "first_appeared": "1991",
+    "paradigms": ["object-oriented", "imperative", "functional"],
+    "typing": "dynamic"
+  }
+}
