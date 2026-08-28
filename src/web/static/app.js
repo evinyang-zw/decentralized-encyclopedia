@@ -52,11 +52,23 @@ function loadAgentStatus() {
             }
             agents.forEach(a => {
                 const span = document.createElement('span');
-                span.className = 'agent-status agent-online';
-                span.textContent = a.name;
+                span.className = 'agent-status ' + (a.enabled ? 'agent-online' : 'agent-disabled');
+                span.textContent = a.name + (a.enabled ? '' : ' (已禁用)');
+                span.title = '点击切换启用/禁用';
+                span.onclick = () => toggleAgent(a.name, a.enabled);
                 bar.appendChild(span);
             });
         });
+}
+
+async function toggleAgent(name, currentlyEnabled) {
+    const action = currentlyEnabled ? 'disable' : 'enable';
+    try {
+        await fetch(`/api/agents/${name}/${action}`, { method: 'POST' });
+        loadAgentStatus();
+    } catch (e) {
+        alert('操作失败: ' + e.message);
+    }
 }
 
 window.addEventListener('load', loadAgentStatus);

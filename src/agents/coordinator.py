@@ -49,9 +49,11 @@ class Coordinator(BaseAgent):
         self.router = router
         self.dispatcher = dispatcher
         self.llm = llm
+        self._process_log: list[str] = []
 
     async def handle_message(self, message: Message, task: Task) -> Message:
         query = self.extract_text(message)
+        self._process_log = []
         subtasks = await self.decompose(query)
         results = await self.dispatch(subtasks)
         answer = await self.aggregate(query, results)
@@ -65,8 +67,10 @@ class Coordinator(BaseAgent):
     def _rule_decompose(self, query: str) -> list[SubTask]:
         agents = self.router.rule_match(query)
         if not agents:
-            agents = self.registry.get_all()[:3]
-        return [SubTask(query=query, target_agents=[a.name for a in agents])]
+            agents = self.registry.get_enabled()[:3]
+        names = [a.name for a in agents]
+        self._process_log.append(f"路由: 匹配到 {len(names)} 个 agent → {', '.join(names)}")
+        return [SubTask(query=query, target_agents=names)]
 
     async def _llm_decompose(self, query: str) -> list[SubTask]:
         from src.llm.prompts import DECOMPOSE_PROMPT
@@ -90,6 +94,8 @@ class Coordinator(BaseAgent):
                     msg = Message(role="user", parts=[Part(type="text", text=st.query)])
                     tasks_to_send.append((card, msg))
 
+        self._process_log.append(f"分发: 向 {len(tasks_to_send)} 个 agent 发送请求...")
+
         async def send(client, msg):
             return await client.send_message(msg)
 
@@ -97,6 +103,7 @@ class Coordinator(BaseAgent):
         messages = []
         for task_result in results:
             messages.extend(task_result.messages)
+        self._process_log.append(f"收集: 收到 {len(results)} 个 agent 响应")
         return messages
 
     async def aggregate(self, query: str, results: list[Message]) -> str:

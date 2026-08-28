@@ -17,18 +17,24 @@ def _make_card() -> AgentCard:
     )
 
 
-def _make_agent(api_key: str | None = None, weather_api_key: str | None = "test-weather-key") -> WeatherAgent:
-    return WeatherAgent(_make_card(), api_key=api_key, weather_api_key=weather_api_key)
+def _make_agent() -> WeatherAgent:
+    return WeatherAgent(_make_card())
 
 
 def _user_msg(text: str, **metadata) -> Message:
     return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
 
 
-MOCK_WEATHER_RESPONSE = {
-    "name": "Beijing",
-    "main": {"temp": 28.5, "humidity": 65},
-    "weather": [{"description": "scattered clouds"}],
+MOCK_WTTR_RESPONSE = {
+    "current_condition": [{
+        "temp_C": "28",
+        "humidity": "65",
+        "weatherDesc": [{"value": "Scattered clouds"}],
+    }],
+    "nearest_area": [{
+        "areaName": [{"value": "Beijing"}],
+        "country": [{"value": "China"}],
+    }],
 }
 
 
@@ -36,7 +42,7 @@ MOCK_WEATHER_RESPONSE = {
 async def test_handle_message_returns_weather():
     agent = _make_agent()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = MOCK_WEATHER_RESPONSE
+    mock_resp.json.return_value = MOCK_WTTR_RESPONSE
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
@@ -53,20 +59,20 @@ async def test_handle_message_returns_weather():
     assert resp.role == "agent"
     assert len(resp.parts) == 2
     assert "Beijing" in resp.parts[0].text
-    assert "28.5" in resp.parts[0].text
-    assert "scattered clouds" in resp.parts[0].text
+    assert "28" in resp.parts[0].text
+    assert "Scattered clouds" in resp.parts[0].text
     data = resp.parts[1].data
     assert data["city"] == "Beijing"
-    assert data["temperature"] == 28.5
+    assert data["temperature"] == 28
     assert data["humidity"] == 65
-    assert data["condition"] == "scattered clouds"
+    assert data["condition"] == "Scattered clouds"
 
 
 @pytest.mark.asyncio
-async def test_handle_message_no_weather_key():
-    agent = _make_agent(weather_api_key=None)
+async def test_handle_message_calls_correct_url():
+    agent = _make_agent()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = MOCK_WEATHER_RESPONSE
+    mock_resp.json.return_value = MOCK_WTTR_RESPONSE
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
@@ -76,21 +82,12 @@ async def test_handle_message_no_weather_key():
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
 
-        msg = _user_msg("Beijing")
+        msg = _user_msg("Tokyo")
         task = Task(task_id="t2", state=TaskState.SUBMITTED)
         await agent.handle_message(msg, task)
 
-    # Verify empty API key is sent
     call_args = instance.get.call_args
-    assert call_args[1]["params"]["appid"] == ""
-    assert call_args[1]["params"]["units"] == "metric"
-
-
-def test_init_stores_weather_api_key():
-    agent = _make_agent(weather_api_key="my-weather-key")
-    assert agent.weather_api_key == "my-weather-key"
-    # A2A server api_key is separate (not passed)
-    assert agent.server.auth.api_key is None
+    assert "wttr.in/Tokyo?format=j1" in call_args[0][0]
 
 
 @pytest.mark.asyncio
