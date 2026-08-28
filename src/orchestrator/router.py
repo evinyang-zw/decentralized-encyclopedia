@@ -14,7 +14,7 @@ class Router:
     KEYWORD_RULES = {
         "wiki|百科|定义|是什么|概念": ["WikipediaAgent"],
         "论文|研究|arxiv|学术|paper": ["ArxivAgent"],
-        "代码|开源|github|项目|repo": ["GithubAgent"],
+        "代码|开源|gitlab|github|项目|repo": ["GithubAgent"],
         "天气|气候|温度|降雨|weather": ["WeatherAgent"],
         "数据|实体|关系|知识图谱|wikidata": ["WikidataAgent"],
     }

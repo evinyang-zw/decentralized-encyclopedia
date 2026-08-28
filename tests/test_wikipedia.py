@@ -1,7 +1,6 @@
-"""Tests for WikipediaAgent."""
+"""Tests for WikipediaAgent (DBpedia Lookup API)."""
 from __future__ import annotations
 
-import json
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from src.agents.wikipedia import WikipediaAgent
@@ -26,13 +25,21 @@ def _user_msg(text: str, **metadata) -> Message:
     return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
 
 
-MOCK_SEARCH_RESPONSE = {
-    "query": {
-        "search": [
-            {"title": "Python (programming language)", "snippet": "Python is a programming language"},
-            {"title": "Python (genus)", "snippet": "Python is a genus of snakes"},
-        ]
-    }
+MOCK_DBPEDIA_RESPONSE = {
+    "docs": [
+        {
+            "resource": ["http://dbpedia.org/resource/Python_(programming_language)"],
+            "label": ["<B>Python</B> (programming language)"],
+            "comment": ["<B>Python</B> is an interpreted, high-level programming language"],
+            "refCount": ["690"],
+        },
+        {
+            "resource": ["http://dbpedia.org/resource/Python_(genus)"],
+            "label": ["Python (genus)"],
+            "comment": ["Python is a genus of large constricting snakes"],
+            "refCount": ["120"],
+        },
+    ]
 }
 
 
@@ -40,7 +47,7 @@ MOCK_SEARCH_RESPONSE = {
 async def test_handle_message_returns_results():
     agent = _make_agent()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = MOCK_SEARCH_RESPONSE
+    mock_resp.json.return_value = MOCK_DBPEDIA_RESPONSE
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
@@ -50,21 +57,25 @@ async def test_handle_message_returns_results():
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
 
-        msg = _user_msg("Python", lang="en", limit=5)
+        msg = _user_msg("Python")
         task = Task(task_id="t1", state=TaskState.SUBMITTED)
         resp = await agent.handle_message(msg, task)
 
     assert resp.role == "agent"
     assert len(resp.parts) == 2
-    assert "Found 2 Wikipedia articles" in resp.parts[0].text
-    assert resp.parts[1].data["results"][0]["title"] == "Python (programming language)"
+    assert "Found 2 articles" in resp.parts[0].text
+    results = resp.parts[1].data["results"]
+    assert results[0]["title"] == "Python (programming language)"
+    assert "interpreted" in results[0]["snippet"]
+    assert "<B>" not in results[0]["title"]
+    assert "<B>" not in results[0]["snippet"]
 
 
 @pytest.mark.asyncio
 async def test_handle_message_default_params():
     agent = _make_agent()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"query": {"search": []}}
+    mock_resp.json.return_value = {"docs": []}
     mock_resp.raise_for_status = MagicMock()
 
     with patch("httpx.AsyncClient") as mock_client_cls:
@@ -78,11 +89,10 @@ async def test_handle_message_default_params():
         task = Task(task_id="t2", state=TaskState.SUBMITTED)
         resp = await agent.handle_message(msg, task)
 
-    assert "Found 0 Wikipedia articles" in resp.parts[0].text
-    # Verify default params
+    assert "Found 0 articles" in resp.parts[0].text
     call_args = instance.get.call_args
-    assert call_args[1]["params"]["srlimit"] == 5
-    assert call_args[1]["params"]["srsearch"] == "test query"
+    assert call_args[1]["params"]["maxResults"] == 5
+    assert call_args[1]["params"]["query"] == "test query"
 
 
 @pytest.mark.asyncio

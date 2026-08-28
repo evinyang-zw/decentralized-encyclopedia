@@ -17,8 +17,8 @@ uv run python scripts/stop_all.py  # kill processes on known ports
 ## Architecture
 
 - **Protocol layer** (`src/protocol/`): Simplified A2A — JSON-RPC over HTTP. `A2AServer` (FastAPI app per agent), `A2AClient` (httpx async caller), `TaskStore` (in-memory, TTL-evicted). Agent cards served at `/.well-known/agent.json`.
-- **Agents** (`src/agents/`): `BaseAgent` abstract class → `handle_message()`. `Coordinator` does decomposition → routing → aggregation. Domain agents (Wikipedia, arXiv, GitHub, Weather, Wikidata) each expose one FastAPI app via `A2AServer`.
-- **Orchestrator** (`src/orchestrator/`): `AgentRegistry` (dynamic registration), `Router` (keyword rules + optional LLM fallback), `Dispatcher` (parallel dispatch with retries).
+- **Agents** (`src/agents/`): `BaseAgent` abstract class → `handle_message()`. `Coordinator` does decomposition → routing → aggregation. Domain agents each expose one FastAPI app via `A2AServer`.
+- **Orchestrator** (`src/orchestrator/`): `AgentRegistry` (dynamic registration, enable/disable), `Router` (keyword rules + optional LLM fallback), `Dispatcher` (parallel dispatch with retries).
 - **LLM** (`src/llm/`): Optional. Factory pattern (`create_llm_provider("openai"|"anthropic")`). When no LLM is configured, the system falls back to rule-based routing and simple text aggregation.
 - **Web** (`src/web/`): FastAPI app with REST API (`/api/query`, `/api/agents`) and static frontend in `src/web/static/`.
 
@@ -46,4 +46,23 @@ All imports use `src.` prefix (src-layout). Example: `from src.protocol.models i
 
 ## Environment
 
-Copy `.env.example` to `.env` to configure LLM provider. System works without LLM (rule-based fallback). WeatherAgent uses wttr.in (no API key needed). Optional `A2A_API_KEY` for inter-agent auth.
+Copy `.env.example` to `.env` to configure LLM provider. System works without LLM (rule-based fallback). All external APIs are free and require no API key. Optional `A2A_API_KEY` for inter-agent auth.
+
+## External API Dependencies
+
+| Agent | API | Free/No Key | 中文查询 |
+|-------|-----|-------------|---------|
+| WikipediaAgent | DBpedia Lookup API | ✅ | ✅ 支持 |
+| ArxivAgent | arXiv API | ✅ | ✅ 中文关键词自动翻译为英文（`QueryTranslator`） |
+| GithubAgent | GitLab API | ✅ | ✅ 中文关键词自动翻译为英文（`QueryTranslator`） |
+| WeatherAgent | wttr.in | ✅ | ✅ 支持 |
+| WikidataAgent | Wikidata Entity Search API (+ mock fallback) | ✅ | ✅ API 用 `language=zh` 搜索中文实体 |
+
+## Chinese Query Translation
+
+`src/utils/query_translate.py` provides `QueryTranslator` for Chinese→English translation:
+
+- **Dictionary mode** (default): matches ~40 high-frequency Chinese technical terms
+- **LLM mode** (when LLM configured): uses LLM for natural translation, falls back to dictionary on failure
+
+ArxivAgent and GithubAgent use `QueryTranslator` automatically. WikidataAgent uses `language=zh` directly.
