@@ -32,7 +32,24 @@ async def health():
 async def list_agents():
     if _registry is None:
         return []
-    return [{"name": c.name, "endpoint": c.endpoint, "skills": [s.name for s in c.skills]} for c in _registry.get_all()]
+    return [{"name": c.name, "endpoint": c.endpoint, "skills": [s.name for s in c.skills], "enabled": not _registry.is_disabled(c.name)} for c in _registry.get_all()]
+
+
+@router.post("/api/agents/{name}/disable")
+async def disable_agent(name: str):
+    if _registry is None:
+        return JSONResponse(status_code=503, content={"error": "Registry not initialized"})
+    if not _registry.disable(name):
+        return JSONResponse(status_code=404, content={"error": f"Agent '{name}' not found"})
+    return {"status": "disabled", "name": name}
+
+
+@router.post("/api/agents/{name}/enable")
+async def enable_agent(name: str):
+    if _registry is None:
+        return JSONResponse(status_code=503, content={"error": "Registry not initialized"})
+    _registry.enable(name)
+    return {"status": "enabled", "name": name}
 
 
 @router.post("/api/query")
@@ -47,4 +64,5 @@ async def query(body: dict):
     msg = Message(role="user", parts=[Part(type="text", text=question)])
     task = Task(task_id=str(uuid.uuid4()), state=TaskState.SUBMITTED)
     task_msg = await _coordinator.handle_message(msg, task)
-    return {"answer": task_msg.parts[0].text if task_msg.parts else "", "process": []}
+    process = getattr(_coordinator, "_process_log", [])
+    return {"answer": task_msg.parts[0].text if task_msg.parts else "", "process": process}

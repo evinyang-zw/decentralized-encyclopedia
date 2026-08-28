@@ -40,7 +40,7 @@ class A2AClient:
         resp.raise_for_status()
         data = resp.json()
         result = data.get("result", {})
-        messages = [Message(**m) for m in result.get("messages", [])]
+        messages = [Message(**m) for m in result.get("messages", []) if m.get("role") == "agent"]
         return Task(
             task_id=result.get("task_id", ""),
             state=TaskState.COMPLETED,

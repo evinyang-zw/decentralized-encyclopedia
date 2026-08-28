@@ -1,6 +1,7 @@
-"""Weather Agent — queries OpenWeatherMap API for weather data."""
+"""Weather Agent — queries wttr.in API for weather data."""
 from __future__ import annotations
-import os
+
+import re
 
 import httpx
 
@@ -8,38 +9,38 @@ from src.agents.base import BaseAgent
 from src.protocol.models import AgentCard, Message, Part, Task
 
 
-class WeatherAgent(BaseAgent):
-    API_URL = "https://api.openweathermap.org/data/2.5/weather"
+_STRIP_RE = re.compile(r"[？?！!。，,\s]+|天气|气候|温度|怎么样|如何|什么|怎样")
 
-    def __init__(
-        self,
-        card: AgentCard,
-        api_key: str | None = None,
-        weather_api_key: str | None = None,
-    ):
-        super().__init__(card, api_key)
-        self.weather_api_key = weather_api_key or os.getenv("OPENWEATHERMAP_API_KEY", "")
+
+class WeatherAgent(BaseAgent):
+    API_URL = "https://wttr.in/{city}?format=j1"
 
     async def handle_message(self, message: Message, task: Task) -> Message:
-        city = self.extract_text(message)
-        result = await self._get_weather(city)
-        parts = [
-            Part(type="text", text=f"Weather in {city}: {result['temperature']}°C, {result['condition']}"),
-            Part(type="data", data=result),
-        ]
+        raw = self.extract_text(message)
+        city = _STRIP_RE.sub("", raw).strip() or raw.strip()
+        try:
+            result = await self._get_weather(city)
+            parts = [
+                Part(type="text", text=f"Weather in {city}: {result['temperature']}°C, {result['condition']}"),
+                Part(type="data", data=result),
+            ]
+        except Exception as e:
+            parts = [Part(type="text", text=f"Failed to get weather for '{city}': {e}")]
         return Message(role="agent", parts=parts)
 
     async def _get_weather(self, city: str) -> dict:
-        params = {"q": city, "appid": self.weather_api_key, "units": "metric"}
+        url = self.API_URL.format(city=city)
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(self.API_URL, params=params)
+            resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
+            cc = data["current_condition"][0]
+            area = data["nearest_area"][0]
             return {
-                "city": data.get("name", city),
-                "temperature": data["main"]["temp"],
-                "humidity": data["main"]["humidity"],
-                "condition": data["weather"][0]["description"] if data.get("weather") else "unknown",
+                "city": area["areaName"][0]["value"] if area.get("areaName") else city,
+                "temperature": int(cc["temp_C"]),
+                "humidity": int(cc["humidity"]),
+                "condition": cc["weatherDesc"][0]["value"].strip() if cc.get("weatherDesc") else "unknown",
             }
 
 

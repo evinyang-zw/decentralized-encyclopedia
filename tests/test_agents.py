@@ -87,8 +87,11 @@ class TestGithubAgent:
 class TestWeatherAgent:
     @pytest.mark.asyncio
     async def test_weather(self):
-        agent = WeatherAgent(card=_card("WeatherAgent"), api_key="fake-key")
-        mock_data = {"main": {"temp": 25, "humidity": 60}, "weather": [{"description": "clear sky"}], "name": "Beijing"}
+        agent = WeatherAgent(card=_card("WeatherAgent"))
+        mock_data = {
+            "current_condition": [{"temp_C": "25", "humidity": "60", "weatherDesc": [{"value": "clear sky"}]}],
+            "nearest_area": [{"areaName": [{"value": "Beijing"}], "country": [{"value": "China"}]}],
+        }
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_data
         mock_resp.raise_for_status = MagicMock()

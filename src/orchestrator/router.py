@@ -29,7 +29,7 @@ class Router:
             if re.search(pattern, query, re.IGNORECASE):
                 for name in agent_names:
                     card = self.registry.get_by_name(name)
-                    if card:
+                    if card and not self.registry.is_disabled(name):
                         matched_names.add(name)
         return [self.registry.get_by_name(n) for n in matched_names if self.registry.get_by_name(n)]
 

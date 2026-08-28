@@ -6,13 +6,13 @@
 uv sync                         # install deps
 uv run pytest tests/ -v         # run all tests
 uv run pytest tests/test_web.py -v  # single test file
-uv run python scripts/run_all.py    # start domain agents (8001-8005)
-uv run python scripts/stop_all.py   # kill processes on known ports
+uv run python scripts/start.py     # start full system (agents + coordinator + web)
+uv run python scripts/stop_all.py  # kill processes on known ports
 ```
 
 ## Startup gotcha
 
-`scripts/run_all.py` only starts the 5 domain agents (ports 8001-8005). It does **not** start the Coordinator (8010) or Web Server (8000). Those must be started separately — see `src/web/app.py` and `src/agents/coordinator.py` for how to wire them. The web API (`src/web/api.py`) expects `init_coordinator()` to be called before serving queries.
+`scripts/start.py` starts the full system: 5 domain agents + Coordinator + Web Server. `scripts/run_all.py` only starts the 5 domain agents and does **not** wire up the Coordinator or Web Server.
 
 ## Architecture
 
@@ -46,4 +46,4 @@ All imports use `src.` prefix (src-layout). Example: `from src.protocol.models i
 
 ## Environment
 
-Copy `.env.example` to `.env` to configure LLM provider. System works without LLM (rule-based fallback). Optional `A2A_API_KEY` for inter-agent auth.
+Copy `.env.example` to `.env` to configure LLM provider. System works without LLM (rule-based fallback). WeatherAgent uses wttr.in (no API key needed). Optional `A2A_API_KEY` for inter-agent auth.
