@@ -12,7 +12,31 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(_project_root, ".env"))
+
 import httpx
+
+
+def _init_llm():
+    """从环境变量初始化 LLM Provider，未配置则返回 None。"""
+    provider = os.getenv("LLM_PROVIDER", "").lower()
+    if provider == "orca":
+        from src.llm.orcarouter_provider import OrcaRouterProvider
+        api_key = os.getenv("ORCAROUTER_API_KEY", "")
+        model = os.getenv("ORCAROUTER_MODEL")  # None 时用默认模型
+        return OrcaRouterProvider(api_key=api_key, model=model) if api_key else None
+    elif provider == "openai":
+        from src.llm.openai_provider import OpenAIProvider
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        return OpenAIProvider(api_key=api_key, model=model) if api_key else None
+    elif provider == "anthropic":
+        from src.llm.anthropic_provider import AnthropicProvider
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+        model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+        return AnthropicProvider(api_key=api_key, model=model) if api_key else None
+    return None
 
 
 AGENT_SCRIPTS: list[tuple[str, str, int]] = [
@@ -79,7 +103,9 @@ async def async_main() -> None:
     from src.web.api import init_coordinator
     from src.web.app import create_app
 
-    llm = None
+    llm = _init_llm()
+    if llm:
+        print(f"  LLM Provider: {type(llm).__name__}")
     router = Router(registry=registry, llm=llm)
     dispatcher = Dispatcher(timeout=10.0, max_retries=1)
     _coordinator = Coordinator(
