@@ -48,6 +48,20 @@ All imports use `src.` prefix (src-layout). Example: `from src.protocol.models i
 
 Copy `.env.example` to `.env` to configure LLM provider. System works without LLM (rule-based fallback). All external APIs are free and require no API key. Optional `A2A_API_KEY` for inter-agent auth.
 
+## LLM Providers
+
+| Provider | Env Config | Default Model | Notes |
+|----------|-----------|---------------|-------|
+| OpenAI | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` | gpt-4o | Standard OpenAI |
+| Anthropic | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` | claude-sonnet-4 | Anthropic SDK |
+| OrcaRouter | `LLM_PROVIDER=orca` + `ORCAROUTER_API_KEY` | orcarouter/free | OpenAI 兼容网关，支持模型自动降级 |
+
+OrcaRouter 特性：
+- API key 以 `sk-orca-` 开头
+- 模型由 `ORCAROUTER_MODEL` 环境变量配置，未配置用默认模型 `orcarouter/free`
+- 调用失败时自动降级到 fallback 模型：`deepseek/deepseek-v4-flash-free` → `tencent/hy3-free` → `qwen/qwen3.8-27b-free`
+- 提供免费模型（DeepSeek、腾讯混元、千问等）
+
 ## External API Dependencies
 
 | Agent | API | Free/No Key | 中文查询 |

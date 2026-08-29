@@ -30,6 +30,16 @@ class TestFactory:
             p = create_llm_provider("anthropic", api_key="test")
             assert p._model == "claude-sonnet-4-20250514"
 
+    def test_create_orca(self):
+        with patch("src.llm.orcarouter_provider.AsyncOpenAI"):
+            p = create_llm_provider("orca", api_key="sk-orca-test")
+            assert p._model == "orcarouter/free"
+
+    def test_create_orca_custom_model(self):
+        with patch("src.llm.orcarouter_provider.AsyncOpenAI"):
+            p = create_llm_provider("orca", api_key="sk-orca-test", model="qwen/qwen3.6-plus")
+            assert p._model == "qwen/qwen3.6-plus"
+
     def test_unknown_provider(self):
         with pytest.raises(LLMProviderError):
             create_llm_provider("unknown", api_key="test")
