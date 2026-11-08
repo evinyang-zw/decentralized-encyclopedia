@@ -138,6 +138,8 @@ class QueryTranslator:
             "只返回英文关键词，用空格分隔，不要解释，不要标点。\n"
             f"查询：{query}"
         )
+        if self._llm is None:
+            return None
         try:
             response = await self._llm.chat([{"role": "user", "content": prompt}])
             result = response.strip()

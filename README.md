@@ -1,216 +1,177 @@
 # Decentralized Encyclopedia
 
-[![Powered by OrcaRouter](https://img.shields.io/badge/Powered_by-OrcaRouter-2563eb)](https://www.orcarouter.ai/ref/ref_91abafd1d58e1cd93c7f)
+**一个多 Agent 协作的跨领域知识问答系统**：5 个领域 Agent 各自独立进程、通过 **A2A v0.3 风格的
+JSON-RPC 子集**（Agent Card 发现 / `message/send` / `tasks/get` / `tasks/cancel` / Task 状态机）
+接受调度，由一个中心 Coordinator 做路由、并行分发与结果聚合；回答里保留来源与失败信息。
 
-多 Agent 协作系统 — 每个 Agent 负责一个知识领域，通过简化版 A2A 协议自主通信，协同回答跨领域复杂问题。
+> 这是一个**工程探索项目**，不是生产系统。仓库的重点是：把"多 Agent + 协议"做成**可运行、可测试、
+> 可评测、可解释**的东西，并如实标注它与标准协议的差距（见 [`docs/protocol.md`](docs/protocol.md)）。
 
-## Architecture
+![跨域查询截图](docs/screenshot.png)
 
-```
-                         ┌─────────────────┐
-                         │    Web UI        │
-                         │  (HTML/JS/CSS)   │
-                         └────────┬────────┘
-                                  │ REST
-                         ┌────────▼────────┐
-                         │  Web Server      │
-                         │  :8000 (FastAPI) │
-                         └────────┬────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │     Coordinator Agent      │
-                    │  问题分解 → 路由 → 聚合     │
-                    │  (LLM or rule-based)       │
-                    └──┬──┬──┬──┬──┬────────────┘
-                       │  │  │  │  │
-          ┌────────────┘  │  │  │  └────────────┐
-          ▼               ▼  ▼  ▼               ▼
-     ┌─────────┐  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-     │ DBpedia │  │  arXiv  │ │ GitLab  │ │ wttr.in │ │Wikidata │
-     │ :8001   │  │  :8002  │ │  :8003  │ │  :8004  │ │ :8005   │
-     └─────────┘  └─────────┘ └─────────┘ └─────────┘ └─────────┘
-```
+*示例：一条中文跨领域问题 → 路由命中 arXiv 与 GitLab 两个 Agent → 并行调用 → 按来源分组的聚合结果
+（截图来自 `/?q=...` 可分享链接，可直接复现）。*
 
-## Simplified A2A Protocol
+---
 
-基于 Google A2A 协议的简化实现，核心概念：
+## 这是什么 / 不是什么
 
-### Agent Card
+| 是 | **不是** |
+|---|---|
+| 5 个真实外部数据源（DBpedia / arXiv / GitLab / wttr.in / Wikidata）的 Agent 化封装 | 不是"去中心化 P2P 网络"——实际是**中心调度（hub-and-spoke）**，Agent 之间不互相通信 |
+| 一个可运行的 A2A **v0.3 风格子集**协议层（Card 发现 + 3 个 JSON-RPC 方法 + 状态机 + 错误码） | **不是 A2A v1.0 兼容实现**（方法名/数据模型/流式均未迁移，逐项列在 `docs/protocol.md`） |
+| 121→150 个离线测试、CI（ruff + mypy + coverage 门禁）、契约测试 | 不是生产级：无鉴权体系、无流式、无持久化任务存储、无水平扩展 |
+| 一套 4 配置的跨域评测（见 `docs/eval-report.md`） | 不是"多 Agent 一定更好"的营销——评测显示它只在跨源问题上占优，代价是延迟与调用次数 |
 
-每个 Agent 在 `/.well-known/agent.json` 暴露能力描述：
+**架构真相**：Coordinator 是 Web 进程内的对象（**没有独立端口**），5 个 domain Agent 是独立进程
+（8001–8005），只与 Coordinator 通信。项目名是历史遗留，架构以本节为准。
 
-```json
-{
-  "name": "WikipediaAgent",
-  "description": "搜索和检索 Wikipedia 百科条目",
-  "version": "1.0.0",
-  "skills": [{
-    "name": "search_articles",
-    "description": "按关键词搜索百科文章",
-    "input_schema": { "query": "string", "lang": "string" }
-  }],
-  "transport": "jsonrpc",
-  "endpoint": "http://localhost:8001"
-}
-```
+---
 
-### Message & Part
-
-```python
-class Part(BaseModel):
-    type: Literal["text", "file", "data"]
-    text: str | None = None
-    data: Any | None = None
-    file_uri: str | None = None
-
-class Message(BaseModel):
-    role: Literal["user", "agent"]
-    parts: list[Part]
-    metadata: dict[str, Any] = {}
-```
-
-### Task Lifecycle
+## 架构
 
 ```
-submitted → working → completed | failed | input-required | canceled
+                       ┌────────────────────────────┐
+                       │  Web UI (static, :8000)     │
+                       │  /api/query · /api/agents   │
+                       └─────────────┬──────────────┘
+                                     │ REST（SSE 未实现）
+                       ┌─────────────▼──────────────┐
+                       │  Coordinator（进程内）       │
+                       │  Router → Dispatcher → 聚合  │
+                       └─┬────┬────┬────┬────┬─────┘
+             A2A JSON-RPC │    │    │    │    │   （Agent Card 发现 + message/send + tasks/*）
+        ┌────────────────┘    │    │    │    └────────────────┐
+        ▼                     ▼    ▼    ▼                    ▼
+ ┌────────────┐      ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+ │ DBpedia    │      │ arXiv    │ │ GitLab   │ │ wttr.in  │ │ Wikidata │
+ │ :8001      │      │ :8002    │ │ :8003    │ │ :8004    │ │ :8005    │
+ └────────────┘      └──────────┘ └──────────┘ └──────────┘ └──────────┘
 ```
 
-### JSON-RPC Transport
+- **协议层** `src/protocol/`：Agent Card（`/.well-known/agent-card.json`）、JSON-RPC 信封、
+  Task 状态机、错误码、`A2AClient`（可注入 `http_client` 做进程内契约测试）。
+- **编排层** `src/orchestrator/`：`Registry`（Card 注册/启停）、`Router`（确定性关键词规则，
+  顺序即优先级，可选 LLM 路由）、`Dispatcher`（信号量限流并行 + 超时 + 指数退避重试，
+  失败以 `DispatchResult.error` 保留而不是静默丢弃）。
+- **Agent 层** `src/agents/`：5 个数据源适配 + `catalog.py`（唯一的 Agent Card 来源）。
+- **评测** `eval/`：问题集 × 4 种路由/调度配置，产出 Markdown/JSON 报告。
 
-```json
-// Request
-{"jsonrpc": "2.0", "method": "message/send", "params": {"task_id": "abc", "message": {...}}, "id": 1}
+---
 
-// Response
-{"jsonrpc": "2.0", "result": {"task_id": "abc", "status": "completed", "message": {...}}, "id": 1}
-```
+## 协议实现范围（摘要）
 
-## Project Structure
+| 对齐 A2A v0.3 | 未实现 / 与 v1.0 的差异 |
+|---|---|
+| Card 路径 `/.well-known/agent-card.json` | 流式 `message/stream`（SSE） |
+| `message/send` / `tasks/get` / `tasks/cancel` | push notification、`tasks/resubscribe` |
+| `Task{id,status,history,artifacts}`、`Part{kind}`、`Message{messageId}` | A2A **v1.0**（PascalCase 方法名、`supportedInterfaces`、删除 `kind`） |
+| 状态机（含终态拒收 `-32004`）与 `-32001/-32002` 错误码 | `A2A-Version` 头、官方 TCK 一致性验证 |
 
-```
-decentralized-encyclopedia/
-├── src/
-│   ├── protocol/              # Simplified A2A protocol
-│   │   ├── models.py          # Pydantic data models (Part, Message, Task, AgentCard)
-│   │   ├── server.py          # A2A Server base class (FastAPI)
-│   │   ├── client.py          # A2A Client (HTTP JSON-RPC)
-│   │   ├── streaming.py       # SSE streaming support
-│   │   └── security.py        # API Key authentication
-│   ├── agents/                # Domain agents
-│   │   ├── base.py            # BaseAgent abstract class
-│   │   ├── coordinator.py     # Coordinator: decomposition + routing + aggregation
-│   │   ├── wikipedia.py       # DBpedia Agent (real API)
-│   │   ├── arxiv.py           # arXiv Agent (real API + query translation)
-│   │   ├── github.py          # GitLab Agent (real API + query translation)
-│   │   ├── weather.py         # Weather Agent (wttr.in API)
-│   │   └── wikidata.py        # Wikidata Agent (Entity Search API + mock fallback)
-│   ├── orchestrator/
-│   │   ├── registry.py        # Agent registry (dynamic registration + enable/disable)
-│   │   ├── router.py          # Hybrid routing (rules + LLM)
-│   │   └── dispatcher.py      # Parallel task dispatching
-│   ├── llm/
-│   │   ├── base.py            # LLM abstraction
-│   │   ├── openai_provider.py # OpenAI implementation
-│   │   ├── anthropic_provider.py # Anthropic implementation
-│   │   ├── orcarouter_provider.py # OrcaRouter (OpenAI-compatible, auto-fallback)
-│   │   ├── factory.py         # Provider factory
-│   │   └── prompts.py         # Prompt templates
-│   ├── utils/
-│   │   └── query_translate.py # Chinese→English query translation (dict + LLM)
-│   └── web/
-│       ├── app.py             # FastAPI web application
-│       ├── api.py             # REST API routes
-│       └── static/            # Frontend (HTML/JS/CSS)
-├── tests/                     # Test suite (121 tests)
-├── scripts/
-│   ├── start.py               # Start full system (agents + coordinator + web)
-│   ├── run_all.py             # Start domain agents only
-│   └── stop_all.py            # Stop all processes
-├── data/mock/                 # Mock data for fallback
-└── pyproject.toml
-```
+完整对照与迁移清单见 [`docs/protocol.md`](docs/protocol.md)。**对外表述请用"A2A 风格子集"，不要写"实现了 A2A"。**
 
-## Quick Start
+---
 
-### 1. Install dependencies
+## 评测：多 Agent 到底赢在哪
+
+评测设计：15–20 条跨领域中文问题（单源 / 跨源 / 源缺失 / 模糊），对 **4 种配置**做同题对照，
+聚合层保持一致，只改变路由与调度方式：
+
+| 配置 | 含义 |
+|---|---|
+| `single` | 只调用规则命中的第 1 个 Agent（单 Agent 直答基线） |
+| `multi_serial` | 命中多个 Agent，串行调用 |
+| `multi_parallel` | 命中多个 Agent，并行调用（**系统实际路径**） |
+| `all_agents` | 固定调用全部 5 个 Agent（成本上限对照） |
+
+指标：数据源覆盖率、关键词命中率、有效结果率、p50/p95 延迟、平均 Agent 调用次数、各数据源
+real/mock/error 状态。**没有 LLM judge，不报"答案正确率"**——这是刻意选择：宁可报能复现的检索类指标，
+也不编一个不可复现的准确率。
+
+结果与方法见 [`docs/eval-report.md`](docs/eval-report.md)，运行方式：
 
 ```bash
-cd decentralized-encyclopedia
-uv sync
+uv run python -m eval.runner          # 4 配置全跑，约 3–5 分钟（依赖外部免费 API）
 ```
 
-### 2. Configure environment
+---
+
+## 快速开始
 
 ```bash
-cp .env.example .env
-# Edit .env to set LLM provider and API keys
+uv sync                          # 安装依赖（Python >= 3.11）
+uv run python scripts/start.py    # 启动 5 个 Agent + Coordinator + Web
+# 浏览器打开 http://localhost:8000
 ```
 
-### 3. Start the system
+**不需要任何 API key**：默认规则模式（关键词路由 + 规则聚合），5 个数据源均为免密公开 API。
+可选配置 LLM（用于查询分解/路由/聚合）见 `.env.example`；**LLM 调用失败会自动降级到规则模式**，
+不会 500（这条有单测覆盖）。
+
+### 示例问题（可直接用 `/?q=` 分享链接）
+
+- `量子计算的最新研究进展有哪些？有哪些开源实现？` → arXiv + GitLab
+- `爱因斯坦在哪所大学任教？` → DBpedia + Wikidata
+- `北京现在天气怎么样？` → wttr.in
+
+### 各数据源状态
+
+| Agent | 数据源 | 中文支持 | 备注 |
+|---|---|---|---|
+| WikipediaAgent | DBpedia Lookup | 词典/LLM 翻译后检索 | 英文关键词命中率明显更高 |
+| ArxivAgent | arXiv API | 同上 | 会被上游限流（429），失败会显式标出 |
+| GithubAgent | GitLab API | 同上 | **数据源是 GitLab，不是 GitHub** |
+| WeatherAgent | wttr.in | 内置常见城市名映射 | 中文城市名会映射为英文 |
+| WikidataAgent | Wikidata API | 直接支持中文 | API 不可用时回退本地快照，结果标注 `source: local-mock` |
+
+---
+
+## 测试与工程
 
 ```bash
-uv run python scripts/start.py
+uv run pytest tests/ -q                  # 150 个测试，全离线，约 4s
+uv run ruff check .                      # lint
+uv run mypy src                          # 类型检查（无 ignore 豁免）
+uv run pytest tests/ -q --cov=src        # 覆盖率（门禁 80%，当前约 85%）
 ```
 
-This starts:
-- 5 domain agents on ports 8001-8005
-- Coordinator (with optional LLM)
-- Web server on port 8000
+- 契约测试：`tests/test_integration.py`（client ↔ server、错误码、终态语义、mock 标注）
+  与 `tests/test_agent_cards.py`（Card 必填字段与可发现性）。
+- CI：`.github/workflows/ci.yml`（Python 3.11，ruff → mypy → pytest + coverage 门禁）。
+- 所有外部 HTTP 在测试中都被 mock 或用 `httpx.ASGITransport` 进程内调用，**CI 不联网**。
 
-### 4. Open Web UI
+---
 
-Visit `http://localhost:8000` and ask a cross-domain question.
+## 已修复的真实缺陷（失败分析）
 
-### Example queries
+| # | 缺陷 | 现象 | 修法 |
+|---|---|---|---|
+| 1 | LLM 调用失败未降级 | 配了无效 key 时 `/api/query` 直接 500 | 分解/聚合均捕获 `LLMProviderError` 并降级到规则模式，单测覆盖 |
+| 2 | 客户端吞掉 JSON-RPC error | 上游报错时仍硬编码 `state=completed` | `A2AClient` 解析 error body、抛 `A2AError`；非 2xx 也解析错误 |
+| 3 | Wikidata 永久 403 | 无描述性 UA / 无联系方式，永远走 mock | UA 带项目 URL（Wikimedia robot policy），恢复真实 API |
+| 4 | 中文查询翻译成空串 | 全 CJK 问题被词典清空 → 检索空结果 | 翻译为空时回退原查询；新增常见实体/城市名映射 |
+| 5 | Agent Card 全为空 | 启动脚本手拼 `description=''`, `skills=[]`，能力不可发现 | Card 收敛到 `catalog.py`，含 description/skills/tags |
+| 6 | "Coordinator: port 8010" 假日志 | 8010 无服务 | 修正启动输出；Coordinator 明确为进程内对象 |
+| 7 | 死代码 | `streaming.py` + `sse-starlette` 从未被使用 | 删除并在协议文档声明"未实现流式" |
 
-- "量子计算的最新研究进展有哪些？有哪些开源实现？"
-- "北京的气候特征是什么？相关的学术研究有哪些？"
-- "爱因斯坦在哪所大学任教？他的学生有哪些？"
+---
 
-## LLM Providers
+## 已知限制
 
-The system works without LLM (rule-based fallback). Configure an LLM provider for smarter query decomposition and result aggregation.
+- **不是 A2A v1.0**：方法名是 v0.3 风格，未实现流式/推送；不要用于跨实现互操作场景。
+- **不是"去中心化"**：单点 Coordinator，Agent 之间不通信；Coordinator 是单点故障。
+- **任务不持久化**：`TaskStore` 为进程内 TTL 存储，重启即丢。
+- **无鉴权体系**：仅可选共享 `X-A2A-API-Key`。
+- **规则路由有天花板**：词典覆盖有限（中文实体/城市名做了映射，但长尾问题会漏）；
+  未配置 LLM 时聚合是确定性拼接，不是"综合判断"。
+- **外部 API 的可用性会波动**：arXiv 限流、Wikidata 偶发 403，失败会被显式标出而不是隐藏。
 
-| Provider | Env Config | Default Model |
-|----------|-----------|---------------|
-| OrcaRouter | `LLM_PROVIDER=orca` + `ORCAROUTER_API_KEY` | orcarouter/free |
-| OpenAI | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` | gpt-4o |
-| Anthropic | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` | claude-sonnet-4 |
+## Roadmap
 
-### OrcaRouter (Recommended)
-
-[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible API gateway with free models and automatic model fallback.
-
-```bash
-# .env
-LLM_PROVIDER=orca
-ORCAROUTER_API_KEY=sk-orca-your-key
-ORCAROUTER_MODEL=orcarouter/free  # optional, uses default if not set
-```
-
-Fallback chain: `orcarouter/free` → `deepseek/deepseek-v4-flash-free` → `tencent/hy3-free` → `qwen/qwen3.8-27b-free`
-
-## Chinese Query Support
-
-All agents support Chinese queries natively or via automatic translation:
-
-- **DBpedia / wttr.in / Wikidata**: API supports Chinese directly
-- **arXiv / GitLab**: `QueryTranslator` converts Chinese keywords to English (dictionary + optional LLM)
-
-## Running Tests
-
-```bash
-uv run pytest tests/ -v
-```
-
-## Tech Stack
-
-- **Python 3.11+** / **uv** (package manager)
-- **FastAPI** / **uvicorn** (HTTP server)
-- **Pydantic** (data validation)
-- **httpx** (async HTTP client)
-- **sse-starlette** (Server-Sent Events)
-- **OrcaRouter** / **OpenAI** / **Anthropic** (optional LLM providers)
+1. 迁移到 **A2A v1.0**（PascalCase 方法名 / `supportedInterfaces` / 删除 `kind`），跑官方 `a2a-tck` 的 JSON-RPC 用例。
+2. 实现 `message/stream`（SSE）与 `tasks/resubscribe`。
+3. 跨 Agent trace（OpenTelemetry span 树：router → agent → aggregate）。
+4. 评测扩展：跨源冲突类问题（两个源给出不同答案时的裁决策略）。
 
 ## License
 

@@ -18,7 +18,8 @@ async function sendQuery() {
             body: JSON.stringify({question}),
         });
         const data = await resp.json();
-        document.getElementById('answer').textContent = data.answer || 'No answer';
+        const answer = document.getElementById('answer');
+        answer.innerHTML = renderMarkdown(data.answer || 'No answer');
         if (data.process) {
             data.process.forEach(entry => addLog(entry));
         }
@@ -40,6 +41,58 @@ function addLog(text) {
     log.scrollTop = log.scrollHeight;
 }
 
+// ---------------------------------------------------------------- rendering
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function renderInline(text) {
+    return text
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+                 '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+// A deliberately small Markdown subset: headings, lists, quotes, rules, bold, links.
+function renderMarkdown(markdown) {
+    const lines = markdown.split('\n');
+    const html = [];
+    let inList = false;
+
+    const closeList = () => {
+        if (inList) { html.push('</ul>'); inList = false; }
+    };
+
+    for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        if (!line.trim()) { closeList(); continue; }
+
+        if (line.startsWith('### ')) {
+            closeList();
+            html.push(`<h4>${renderInline(escapeHtml(line.slice(4)))}</h4>`);
+        } else if (line.startsWith('---')) {
+            closeList();
+            html.push('<hr>');
+        } else if (line.startsWith('> ')) {
+            closeList();
+            html.push(`<blockquote>${renderInline(escapeHtml(line.slice(2)))}</blockquote>`);
+        } else if (line.startsWith('- ')) {
+            if (!inList) { html.push('<ul>'); inList = true; }
+            html.push(`<li>${renderInline(escapeHtml(line.slice(2)))}</li>`);
+        } else {
+            closeList();
+            html.push(`<p>${renderInline(escapeHtml(line))}</p>`);
+        }
+    }
+    closeList();
+    return html.join('');
+}
+
+// ---------------------------------------------------------------- agents
 function loadAgentStatus() {
     fetch('/api/agents')
         .then(r => r.json())
@@ -54,7 +107,7 @@ function loadAgentStatus() {
                 const span = document.createElement('span');
                 span.className = 'agent-status ' + (a.enabled ? 'agent-online' : 'agent-disabled');
                 span.textContent = a.name + (a.enabled ? '' : ' (已禁用)');
-                span.title = '点击切换启用/禁用';
+                span.title = (a.description || '') + '\n点击切换启用/禁用';
                 span.onclick = () => toggleAgent(a.name, a.enabled);
                 bar.appendChild(span);
             });
@@ -71,4 +124,12 @@ async function toggleAgent(name, currentlyEnabled) {
     }
 }
 
-window.addEventListener('load', loadAgentStatus);
+window.addEventListener('load', () => {
+    loadAgentStatus();
+    // Shareable demo link: /?q=<question> auto-runs the query.
+    const q = new URLSearchParams(window.location.search).get('q');
+    if (q) {
+        document.getElementById('query-input').value = q;
+        sendQuery();
+    }
+});

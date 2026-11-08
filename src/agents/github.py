@@ -1,6 +1,8 @@
 """GitLab Agent — searches GitLab API for projects."""
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 from src.agents.base import BaseAgent
@@ -34,7 +36,11 @@ class GithubAgent(BaseAgent):
     async def _search(self, query: str, max_results: int) -> list[dict]:
         if not query.strip():
             return []
-        params = {"search": query, "per_page": max_results, "order_by": "star_count"}
+        params: dict[str, Any] = {
+            "search": query,
+            "per_page": max_results,
+            "order_by": "star_count",
+        }
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(self.API_URL, params=params)
             resp.raise_for_status()

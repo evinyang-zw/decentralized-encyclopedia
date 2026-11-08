@@ -57,6 +57,8 @@ class Router:
         from src.llm.prompts import ROUTE_PROMPT
         agents_str = ", ".join(c.name for c in self.registry.get_all())
         prompt = ROUTE_PROMPT.format(agents=agents_str, query=query)
+        if self.llm is None:
+            return []
         try:
             response = await self.llm.chat([{"role": "user", "content": prompt}])
             names = json.loads(response)

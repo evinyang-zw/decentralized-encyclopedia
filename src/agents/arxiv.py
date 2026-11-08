@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from typing import Any
 
 import httpx
 
@@ -36,7 +37,11 @@ class ArxivAgent(BaseAgent):
     async def _search_arxiv(self, query: str, max_results: int) -> list[dict]:
         if not query.strip():
             return []
-        params = {"search_query": f"all:{query}", "max_results": max_results, "sortBy": "relevance"}
+        params: dict[str, Any] = {
+            "search_query": f"all:{query}",
+            "max_results": max_results,
+            "sortBy": "relevance",
+        }
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(self.API_URL, params=params)
             resp.raise_for_status()
@@ -51,11 +56,15 @@ class ArxivAgent(BaseAgent):
             title = entry.find("atom:title", ns)
             summary = entry.find("atom:summary", ns)
             link = entry.find("atom:id", ns)
-            authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns)]
+            authors = [
+                name_el.text
+                for author in entry.findall("atom:author", ns)
+                if (name_el := author.find("atom:name", ns)) is not None and name_el.text
+            ]
             results.append({
-                "title": title.text.strip() if title is not None else "",
-                "abstract": summary.text.strip() if summary is not None else "",
-                "url": link.text.strip() if link is not None else "",
+                "title": (title.text or "").strip() if title is not None else "",
+                "abstract": (summary.text or "").strip() if summary is not None else "",
+                "url": (link.text or "").strip() if link is not None else "",
                 "authors": authors,
             })
         return results

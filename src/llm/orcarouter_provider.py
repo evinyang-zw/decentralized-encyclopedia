@@ -1,6 +1,8 @@
 """OrcaRouter — OpenAI-compatible API gateway with automatic model fallback."""
 from __future__ import annotations
 
+from typing import Any, cast
+
 from openai import AsyncOpenAI
 
 from src.llm.base import LLMProvider, LLMProviderError
@@ -26,7 +28,7 @@ class OrcaRouterProvider(LLMProvider):
         for model in models_to_try:
             try:
                 resp = await self._client.chat.completions.create(
-                    model=model, messages=messages, **kwargs,
+                    model=model, messages=cast(Any, messages), **kwargs,
                 )
                 return resp.choices[0].message.content or ""
             except Exception as e:

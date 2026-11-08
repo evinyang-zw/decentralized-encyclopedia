@@ -8,12 +8,14 @@
 </head>
 <body>
     <header>
-        <h1>去中心化百科</h1>
+        <h1>Decentralized Encyclopedia</h1>
+        <p class="subtitle">5 个领域 Agent 经 A2A 风格 JSON-RPC 协议协作 · 中心调度式编排（非 P2P 网络）</p>
         <div id="agent-status" class="agent-bar"></div>
     </header>
     <main>
         <section class="query-section">
-            <textarea id="query-input" placeholder="输入跨领域问题..."></textarea>
+            <textarea id="query-input"
+                placeholder="输入跨领域问题，例如：&#10;· 量子计算的最新研究进展有哪些？有哪些开源实现？&#10;· 爱因斯坦在哪所大学任教？&#10;· 北京现在天气怎么样？"></textarea>
             <button id="send-btn" onclick="sendQuery()">发送查询</button>
         </section>
         <section class="process-section">

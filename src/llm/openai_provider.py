@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from openai import AsyncOpenAI
 
 from src.llm.base import LLMProvider, LLMProviderError
@@ -12,7 +14,9 @@ class OpenAIProvider(LLMProvider):
 
     async def chat(self, messages: list[dict], **kwargs) -> str:
         try:
-            resp = await self._client.chat.completions.create(model=self._model, messages=messages)
+            resp = await self._client.chat.completions.create(
+                model=self._model, messages=cast(Any, messages)
+            )
             return resp.choices[0].message.content or ""
         except Exception as e:
             raise LLMProviderError(f"OpenAI error: {e}") from e

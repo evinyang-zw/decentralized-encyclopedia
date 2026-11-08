@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import httpx
 
@@ -39,7 +40,7 @@ class WikipediaAgent(BaseAgent):
         return Message(role="agent", parts=parts)
 
     async def _search(self, query: str, max_results: int) -> list[dict]:
-        params = {"query": query, "format": "json", "maxResults": max_results}
+        params: dict[str, Any] = {"query": query, "format": "json", "maxResults": max_results}
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(self.API_URL, params=params)
             resp.raise_for_status()

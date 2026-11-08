@@ -5,6 +5,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -78,7 +79,7 @@ class WikidataAgent(BaseAgent):
         )
 
     async def _search_entities(self, query: str, lang: str = "en", limit: int = 5) -> list[dict]:
-        params = {
+        params: dict[str, Any] = {
             "action": "wbsearchentities",
             "search": query,
             "language": lang,

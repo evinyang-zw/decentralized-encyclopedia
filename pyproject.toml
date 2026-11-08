@@ -18,6 +18,10 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    # Lint/type 工具加主版本上限，避免上游规则变化导致 CI 突然变红
+    "ruff>=0.6.0,<1.0.0",
+    "mypy>=1.11.0,<3.0.0",
 ]
 
 [build-system]
@@ -27,3 +31,48 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# Lint: ruff (`ruff check .`)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试代码中较长的断言/数据构造保留可读性，不做强制换行
+"tests/**" = ["E501"]
+# scripts/ 需要先向 sys.path 注册仓库根目录，再导入项目模块
+"scripts/**" = ["E402"]
+
+# ---------------------------------------------------------------------------
+# Type check: mypy (`mypy src`)
+# 目标：CI 可稳定运行且有实际收益；暂不启用 strict（现有代码注解不全）。
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Coverage: pytest-cov / coverage.py
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "raise NotImplementedError",
+]

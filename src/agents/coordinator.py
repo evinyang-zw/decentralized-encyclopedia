@@ -95,6 +95,8 @@ class Coordinator(BaseAgent):
 
         agents_str = ", ".join(a.name for a in self.registry.get_all())
         prompt = DECOMPOSE_PROMPT.format(available_agents=agents_str, query=query)
+        if self.llm is None:
+            return self._rule_decompose(query)
         try:
             response = await self.llm.chat([{"role": "user", "content": prompt}])
             items = json.loads(response)
@@ -129,7 +131,7 @@ class Coordinator(BaseAgent):
 
         self._process_log.append(f"分发: 向 {len(tasks_to_send)} 个 agent 发送请求（并行）")
 
-        async def send(client, msg):  # type: ignore[no-untyped-def]
+        async def send(client, msg):
             return await client.send_message(msg)
 
         results = await self.dispatcher.dispatch(tasks_to_send, send_fn=send)
@@ -260,6 +262,8 @@ class Coordinator(BaseAgent):
         if not blocks:
             return None
         prompt = AGGREGATE_PROMPT.format(query=query, results="\n".join(blocks))
+        if self.llm is None:
+            return None
         try:
             answer = await self.llm.chat([{"role": "user", "content": prompt}])
             self._process_log.append("聚合: LLM 综合生成")

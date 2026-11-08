@@ -24,5 +24,5 @@ class BaseAgent(ABC):
         return ""
 
     def start(self, port: int):
-        self.server.handle_message = self.handle_message
+        self.server.handle_message = self.handle_message  # type: ignore[method-assign]
         self.server.start(port=port)
