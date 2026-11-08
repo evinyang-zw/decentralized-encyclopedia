@@ -1,11 +1,12 @@
 """Tests for LLM provider factory."""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import patch
 
-from src.llm.factory import create_llm_provider
+import pytest
+
 from src.llm.base import LLMProviderError
+from src.llm.factory import create_llm_provider
 
 
 class TestCreateLLMProvider:

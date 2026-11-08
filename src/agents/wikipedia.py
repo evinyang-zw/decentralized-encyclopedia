@@ -7,6 +7,7 @@ import httpx
 
 from src.agents.base import BaseAgent
 from src.protocol.models import AgentCard, Message, Part, Task
+from src.utils.query_translate import QueryTranslator
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
@@ -14,15 +15,26 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 class WikipediaAgent(BaseAgent):
     API_URL = "https://lookup.dbpedia.org/api/search"
 
+    def __init__(
+        self,
+        card: AgentCard,
+        api_key: str | None = None,
+        translator: QueryTranslator | None = None,
+    ):
+        super().__init__(card, api_key)
+        self._translator = translator or QueryTranslator()
+
     async def handle_message(self, message: Message, task: Task) -> Message:
-        query = self.extract_text(message)
+        raw = self.extract_text(message)
+        # DBpedia Lookup is keyword-based and English-centric: translate first.
+        query = (await self._translator.translate(raw)).strip() or raw
         limit = message.metadata.get("limit", 5)
 
         results = await self._search(query, limit)
 
         parts = [
-            Part(type="text", text=f"Found {len(results)} articles for '{query}'"),
-            Part(type="data", data={"results": results}),
+            Part(kind="text", text=f"Found {len(results)} articles for '{query}'"),
+            Part(kind="data", data={"results": results}),
         ]
         return Message(role="agent", parts=parts)
 

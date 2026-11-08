@@ -1,10 +1,8 @@
 """Tests for Router."""
 from __future__ import annotations
 
-import pytest
-
-from src.orchestrator.router import Router
 from src.orchestrator.registry import AgentRegistry
+from src.orchestrator.router import Router
 from src.protocol.models import AgentCard, Skill
 
 
@@ -12,13 +10,13 @@ def _setup_registry() -> AgentRegistry:
     reg = AgentRegistry()
     reg.register_sync(AgentCard(
         name="WikipediaAgent", description="wiki", version="1.0.0",
-        skills=[Skill(name="search_articles", description="search", input_schema={}, output_schema={})],
-        endpoint="http://localhost:8001",
+        skills=[Skill(id="search_articles", name="search_articles", description="search")],
+        url="http://localhost:8001",
     ))
     reg.register_sync(AgentCard(
         name="ArxivAgent", description="arxiv", version="1.0.0",
-        skills=[Skill(name="search_papers", description="search", input_schema={}, output_schema={})],
-        endpoint="http://localhost:8002",
+        skills=[Skill(id="search_papers", name="search_papers", description="search")],
+        url="http://localhost:8002",
     ))
     return reg
 

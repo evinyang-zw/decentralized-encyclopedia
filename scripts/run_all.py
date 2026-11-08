@@ -1,59 +1,42 @@
-"""一键启动所有 Agent 进程。"""
+"""只启动 5 个 domain agents（不含 Coordinator / Web Server）。
+
+完整系统请用 `python scripts/start.py`。
+"""
+from __future__ import annotations
+
+import os
+import signal
 import subprocess
 import sys
 import time
-import signal
-import os
+
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from src.agents.catalog import AGENT_SPECS
 
 
-def _make_agent_script(agent_class: str, port: int) -> str:
-    """Generate inline Python script to start an agent."""
-    return (
-        f"import asyncio; "
-        f"from src.protocol.models import AgentCard, Skill; "
-        f"from src.agents.{agent_class.split('.')[-1].lower()} import {agent_class.split('.')[-1]}; "
-        f"card = AgentCard(name='{agent_class}', description='', version='1.0.0', "
-        f"skills=[], endpoint='http://localhost:{port}'); "
-        f"agent = {agent_class}(card=card); "
-        f"agent.start(port={port})"
-    )
-
-
-AGENT_SCRIPTS = {
-    "WikipediaAgent": ("src.agents.wikipedia", "WikipediaAgent", 8001),
-    "ArxivAgent": ("src.agents.arxiv", "ArxivAgent", 8002),
-    "GithubAgent": ("src.agents.github", "GithubAgent", 8003),
-    "WeatherAgent": ("src.agents.weather", "WeatherAgent", 8004),
-    "WikidataAgent": ("src.agents.wikidata", "WikidataAgent", 8005),
-}
-
-
-def main():
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    procs = []
-
-    for name, (module, cls_name, port) in AGENT_SCRIPTS.items():
-        print(f"Starting {name} on port {port}...")
+def main() -> None:
+    procs: list[tuple[str, subprocess.Popen]] = []
+    for spec in AGENT_SPECS:
+        print(f"Starting {spec.name} on port {spec.port}...")
         script = (
-            f"import sys; sys.path.insert(0, '{project_root}'); "
-            f"from {module} import {cls_name}; "
-            f"from src.protocol.models import AgentCard; "
-            f"card = AgentCard(name='{name}', description='', version='1.0.0', "
-            f"skills=[], endpoint='http://localhost:{port}'); "
-            f"agent = {cls_name}(card=card); "
-            f"agent.start(port={port})"
+            f"import sys; sys.path.insert(0, {_project_root!r}); "
+            f"from src.agents.catalog import get_spec as _get, build_card as _build; "
+            f"from {spec.module} import {spec.class_name} as _Agent; "
+            f"_agent = _Agent(card=_build(_get({spec.name!r}))); "
+            f"_agent.start(port={spec.port})"
         )
-        p = subprocess.Popen(
-            [sys.executable, "-c", script],
-            cwd=project_root,
-        )
-        procs.append((name, p))
+        p = subprocess.Popen([sys.executable, "-c", script], cwd=_project_root)
+        procs.append((spec.name, p))
         time.sleep(0.5)
 
-    print(f"\nAll {len(procs)} agents started!")
-    print("Agents running on ports 8001-8005")
+    print(f"\nAll {len(procs)} agents started (ports 8001-8005)")
+    print("Agent Cards: http://localhost:<port>/.well-known/agent-card.json")
+    print("Note: Coordinator/Web are NOT started by this script — use scripts/start.py")
 
-    def shutdown(sig, frame):
+    def shutdown(sig, frame) -> None:  # type: ignore[no-untyped-def]
         print("\nShutting down...")
         for name, p in procs:
             p.terminate()

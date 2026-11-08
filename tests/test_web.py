@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
-from src.web.app import create_app
-from src.web.api import init_coordinator
 from src.orchestrator.registry import AgentRegistry
+from src.web.api import init_coordinator
+from src.web.app import create_app
 
 
 class TestWebApp:
@@ -67,16 +67,13 @@ class TestQueryEndpoint:
 
     @pytest.mark.asyncio
     async def test_query_valid_with_coordinator(self):
-        from src.agents.coordinator import Coordinator
-        from src.orchestrator.router import Router
-        from src.orchestrator.dispatcher import Dispatcher
         from src.protocol.models import AgentCard, Skill
 
         reg = AgentRegistry()
         reg.register_sync(AgentCard(
             name="TestAgent", description="test", version="1.0.0",
-            skills=[Skill(name="test", description="test", input_schema={}, output_schema={})],
-            endpoint="http://localhost:9999",
+            skills=[Skill(id="test", name="test", description="test")],
+            url="http://localhost:9999",
         ))
         init_coordinator(reg)
 

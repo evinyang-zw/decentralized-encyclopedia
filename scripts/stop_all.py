@@ -1,6 +1,5 @@
 """停止所有 Agent 进程。"""
 import subprocess
-import sys
 
 
 def main():

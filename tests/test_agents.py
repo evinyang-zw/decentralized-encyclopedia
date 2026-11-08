@@ -1,22 +1,23 @@
 """Tests for domain agents."""
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.wikipedia import WikipediaAgent
+import pytest
+
 from src.agents.arxiv import ArxivAgent
 from src.agents.github import GithubAgent
 from src.agents.weather import WeatherAgent
 from src.agents.wikidata import WikidataAgent
-from src.protocol.models import AgentCard, Skill, Message, Part, Task
+from src.agents.wikipedia import WikipediaAgent
+from src.protocol.models import AgentCard, Message, Part, Skill, Task
 
 
 def _card(name: str) -> AgentCard:
     return AgentCard(
         name=name, description=f"{name} agent", version="1.0.0",
-        skills=[Skill(name="test", description="test", input_schema={}, output_schema={})],
-        endpoint=f"http://localhost:8001",
+        skills=[Skill(id="test", name="test", description="test")],
+        url="http://localhost:8001",
     )
 
 
@@ -39,9 +40,9 @@ class TestWikipediaAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="Python")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("Python" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="Python")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("Python" in p.text for p in result.parts if p.kind == "text")
 
 
 class TestArxivAgent:
@@ -63,9 +64,9 @@ class TestArxivAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="quantum")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("quantum" in p.text.lower() for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="quantum")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("quantum" in p.text.lower() for p in result.parts if p.kind == "text")
 
     @pytest.mark.asyncio
     async def test_chinese_query_translated(self):
@@ -82,9 +83,9 @@ class TestArxivAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="量子计算论文")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("paper" in p.text.lower() or "quantum" in p.text.lower() for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="量子计算论文")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("paper" in p.text.lower() or "quantum" in p.text.lower() for p in result.parts if p.kind == "text")
 
 
 class TestGithubAgent:
@@ -100,9 +101,9 @@ class TestGithubAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="test")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("Found" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="test")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("Found" in p.text for p in result.parts if p.kind == "text")
 
     @pytest.mark.asyncio
     async def test_chinese_query_translated(self):
@@ -116,9 +117,9 @@ class TestGithubAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="开源机器学习项目")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("Found" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="开源机器学习项目")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("Found" in p.text for p in result.parts if p.kind == "text")
 
 
 class TestWeatherAgent:
@@ -137,9 +138,9 @@ class TestWeatherAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="Beijing")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("25" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="Beijing")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("25" in p.text for p in result.parts if p.kind == "text")
 
 
 class TestWikidataAgent:
@@ -159,13 +160,13 @@ class TestWikidataAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="量子计算")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
+            msg = Message(role="user", parts=[Part(kind="text", text="量子计算")])
+            result = await agent.handle_message(msg, Task(id="t1"))
         # Verify language=zh was used
         call_args = client.get.call_args
         assert call_args[1]["params"]["language"] == "zh"
-        assert any("Found" in p.text for p in result.parts if p.type == "text")
-        data = next((p.data for p in result.parts if p.type == "data"), None)
+        assert any("Found" in p.text for p in result.parts if p.kind == "text")
+        data = next((p.data for p in result.parts if p.kind == "data"), None)
         assert data is not None
 
     @pytest.mark.asyncio
@@ -184,8 +185,8 @@ class TestWikidataAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="Einstein")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
+            msg = Message(role="user", parts=[Part(kind="text", text="Einstein")])
+            await agent.handle_message(msg, Task(id="t1"))
         call_args = client.get.call_args
         assert call_args[1]["params"]["language"] == "en"
 
@@ -201,9 +202,9 @@ class TestWikidataAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="爱因斯坦")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("Einstein" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="爱因斯坦")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("Einstein" in p.text for p in result.parts if p.kind == "text")
 
     @pytest.mark.asyncio
     async def test_query_not_found(self):
@@ -217,6 +218,6 @@ class TestWikidataAgent:
             client.get = AsyncMock(return_value=mock_resp)
             client.__aenter__ = AsyncMock(return_value=client)
             client.__aexit__ = AsyncMock(return_value=False)
-            msg = Message(role="user", parts=[Part(type="text", text="NonExistentXYZ123")])
-            result = await agent.handle_message(msg, Task(task_id="t1"))
-        assert any("未找到" in p.text for p in result.parts if p.type == "text")
+            msg = Message(role="user", parts=[Part(kind="text", text="NonExistentXYZ123")])
+            result = await agent.handle_message(msg, Task(id="t1"))
+        assert any("未找到" in p.text for p in result.parts if p.kind == "text")

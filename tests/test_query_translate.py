@@ -1,9 +1,11 @@
 """Tests for QueryTranslator."""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from src.utils.query_translate import QueryTranslator, ZH_EN_KEYWORDS
+
+import pytest
+
+from src.utils.query_translate import ZH_EN_KEYWORDS, QueryTranslator
 
 
 class TestDictTranslate:

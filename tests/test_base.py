@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import pytest
+
 from src.agents.base import BaseAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 class DummyAgent(BaseAgent):
     async def handle_message(self, message: Message, task: Task) -> Message:
         query = self.extract_text(message)
-        return Message(role="agent", parts=[Part(type="text", text=f"echo: {query}")])
+        return Message(role="agent", parts=[Part(kind="text", text=f"echo: {query}")])
 
 
 def _make_card(name: str = "Dummy") -> AgentCard:
@@ -18,15 +19,15 @@ def _make_card(name: str = "Dummy") -> AgentCard:
         description="Test agent",
         version="1.0.0",
         skills=[],
-        endpoint="http://localhost:9999",
+        url="http://localhost:9999",
     )
 
 
 @pytest.mark.asyncio
 async def test_handle_message_returns_response():
     agent = DummyAgent(_make_card())
-    msg = Message(role="user", parts=[Part(type="text", text="hello")])
-    task = Task(task_id="t1", state=TaskState.SUBMITTED)
+    msg = Message(role="user", parts=[Part(kind="text", text="hello")])
+    task = Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED))
     resp = await agent.handle_message(msg, task)
     assert resp.role == "agent"
     assert resp.parts[0].text == "echo: hello"
@@ -35,8 +36,8 @@ async def test_handle_message_returns_response():
 @pytest.mark.asyncio
 async def test_handle_message_empty_text():
     agent = DummyAgent(_make_card())
-    msg = Message(role="user", parts=[Part(type="data", data={"k": "v"})])
-    task = Task(task_id="t2", state=TaskState.SUBMITTED)
+    msg = Message(role="user", parts=[Part(kind="data", data={"k": "v"})])
+    task = Task(id="t2", status=TaskStatus(state=TaskState.SUBMITTED))
     resp = await agent.handle_message(msg, task)
     assert resp.parts[0].text == "echo: "
 

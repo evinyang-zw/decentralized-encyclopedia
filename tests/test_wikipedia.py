@@ -1,10 +1,12 @@
 """Tests for WikipediaAgent (DBpedia Lookup API)."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.agents.wikipedia import WikipediaAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 def _make_card() -> AgentCard:
@@ -13,7 +15,7 @@ def _make_card() -> AgentCard:
         description="Search Wikipedia",
         version="1.0.0",
         skills=[],
-        endpoint="http://localhost:8001",
+        url="http://localhost:8001",
     )
 
 
@@ -22,7 +24,7 @@ def _make_agent() -> WikipediaAgent:
 
 
 def _user_msg(text: str, **metadata) -> Message:
-    return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
+    return Message(role="user", parts=[Part(kind="text", text=text)], metadata=metadata)
 
 
 MOCK_DBPEDIA_RESPONSE = {
@@ -58,7 +60,7 @@ async def test_handle_message_returns_results():
         mock_client_cls.return_value = instance
 
         msg = _user_msg("Python")
-        task = Task(task_id="t1", state=TaskState.SUBMITTED)
+        task = Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED))
         resp = await agent.handle_message(msg, task)
 
     assert resp.role == "agent"
@@ -86,7 +88,7 @@ async def test_handle_message_default_params():
         mock_client_cls.return_value = instance
 
         msg = _user_msg("test query")
-        task = Task(task_id="t2", state=TaskState.SUBMITTED)
+        task = Task(id="t2", status=TaskStatus(state=TaskState.SUBMITTED))
         resp = await agent.handle_message(msg, task)
 
     assert "Found 0 articles" in resp.parts[0].text
@@ -97,8 +99,8 @@ async def test_handle_message_default_params():
 
 @pytest.mark.asyncio
 async def test_extract_text_static():
-    msg = Message(role="user", parts=[Part(type="text", text="hello")])
+    msg = Message(role="user", parts=[Part(kind="text", text="hello")])
     assert WikipediaAgent.extract_text(msg) == "hello"
 
-    msg2 = Message(role="user", parts=[Part(type="data", data={})])
+    msg2 = Message(role="user", parts=[Part(kind="data", data={})])
     assert WikipediaAgent.extract_text(msg2) == ""

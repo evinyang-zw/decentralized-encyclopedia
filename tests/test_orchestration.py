@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import pytest
+
 from src.orchestrator.registry import AgentRegistry
 from src.orchestrator.router import Router
-from src.protocol.models import AgentCard, Skill
+from src.protocol.models import AgentCard, Skill, TaskStatus
 
 
 def _card(name: str, skills: list[str] = None) -> AgentCard:
     return AgentCard(
         name=name, description=f"{name} agent", version="1.0.0",
-        skills=[Skill(name=s, description=s, input_schema={}, output_schema={}) for s in (skills or ["test"])],
-        endpoint=f"http://localhost:8001",
+        skills=[Skill(id=s, name=s, description=s) for s in (skills or ["test"])],
+        url="http://localhost:8001",
     )
 
 
@@ -77,11 +78,11 @@ class TestDispatcher:
         dispatcher = Dispatcher(timeout=5.0, max_retries=0)
 
         async def mock_send(client, msg):
-            return Task(task_id="t1", state=TaskState.COMPLETED, messages=[
-                Message(role="agent", parts=[Part(type="text", text="result")])
+            return Task(id="t1", status=TaskStatus(state=TaskState.COMPLETED), history=[
+                Message(role="agent", parts=[Part(kind="text", text="result")])
             ])
 
         card = _card("TestAgent")
-        msg = Message(role="user", parts=[Part(type="text", text="hello")])
+        msg = Message(role="user", parts=[Part(kind="text", text="hello")])
         results = await dispatcher.dispatch([(card, msg)], send_fn=mock_send)
         assert len(results) == 1

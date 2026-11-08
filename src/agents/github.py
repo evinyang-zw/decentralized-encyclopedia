@@ -11,7 +11,12 @@ from src.utils.query_translate import QueryTranslator
 class GithubAgent(BaseAgent):
     API_URL = "https://gitlab.com/api/v4/projects"
 
-    def __init__(self, card: AgentCard, api_key: str | None = None, translator: QueryTranslator | None = None):
+    def __init__(
+        self,
+        card: AgentCard,
+        api_key: str | None = None,
+        translator: QueryTranslator | None = None,
+    ):
         super().__init__(card, api_key)
         self._translator = translator or QueryTranslator()
 
@@ -21,8 +26,8 @@ class GithubAgent(BaseAgent):
         limit = message.metadata.get("limit", 5)
         results = await self._search(query, limit)
         parts = [
-            Part(type="text", text=f"Found {len(results)} repositories for '{query}'"),
-            Part(type="data", data={"results": results}),
+            Part(kind="text", text=f"Found {len(results)} repositories for '{query}'"),
+            Part(kind="data", data={"results": results}),
         ]
         return Message(role="agent", parts=parts)
 

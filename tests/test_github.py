@@ -1,16 +1,18 @@
 """Tests for GithubAgent with Chinese translation support."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.agents.github import GithubAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 def _make_card() -> AgentCard:
     return AgentCard(
         name="GithubAgent", description="Search GitLab", version="1.0.0",
-        skills=[], endpoint="http://localhost:8003",
+        skills=[], url="http://localhost:8003",
     )
 
 
@@ -19,7 +21,7 @@ def _make_agent() -> GithubAgent:
 
 
 def _user_msg(text: str, **metadata) -> Message:
-    return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
+    return Message(role="user", parts=[Part(kind="text", text=text)], metadata=metadata)
 
 
 MOCK_GITLAB_RESPONSE = [
@@ -40,7 +42,7 @@ async def test_handle_message_returns_results():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("python", limit=5), Task(task_id="t1", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("python", limit=5), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert resp.role == "agent"
     assert "Found 2 repositories" in resp.parts[0].text
     results = resp.parts[1].data["results"]
@@ -60,7 +62,7 @@ async def test_chinese_query_translated():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("开源机器学习项目"), Task(task_id="t1", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("开源机器学习项目"), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert resp.role == "agent"
     assert "Found" in resp.parts[0].text
 
@@ -77,11 +79,11 @@ async def test_handle_message_empty():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("nonexistent"), Task(task_id="t2", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("nonexistent"), Task(id="t2", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert "Found 0 repositories" in resp.parts[0].text
 
 
 @pytest.mark.asyncio
 async def test_extract_text_static():
-    msg = Message(role="user", parts=[Part(type="text", text="query")])
+    msg = Message(role="user", parts=[Part(kind="text", text="query")])
     assert GithubAgent.extract_text(msg) == "query"

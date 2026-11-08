@@ -13,7 +13,12 @@ from src.utils.query_translate import QueryTranslator
 class ArxivAgent(BaseAgent):
     API_URL = "https://export.arxiv.org/api/query"
 
-    def __init__(self, card: AgentCard, api_key: str | None = None, translator: QueryTranslator | None = None):
+    def __init__(
+        self,
+        card: AgentCard,
+        api_key: str | None = None,
+        translator: QueryTranslator | None = None,
+    ):
         super().__init__(card, api_key)
         self._translator = translator or QueryTranslator()
 
@@ -23,8 +28,8 @@ class ArxivAgent(BaseAgent):
         limit = message.metadata.get("limit", 5)
         results = await self._search_arxiv(query, limit)
         parts = [
-            Part(type="text", text=f"Found {len(results)} papers for '{query}'"),
-            Part(type="data", data={"results": results}),
+            Part(kind="text", text=f"Found {len(results)} papers for '{query}'"),
+            Part(kind="data", data={"results": results}),
         ]
         return Message(role="agent", parts=parts)
 

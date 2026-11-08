@@ -1,10 +1,12 @@
 """Tests for WeatherAgent."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.agents.weather import WeatherAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 def _make_card() -> AgentCard:
@@ -13,7 +15,7 @@ def _make_card() -> AgentCard:
         description="Get weather",
         version="1.0.0",
         skills=[],
-        endpoint="http://localhost:8004",
+        url="http://localhost:8004",
     )
 
 
@@ -22,7 +24,7 @@ def _make_agent() -> WeatherAgent:
 
 
 def _user_msg(text: str, **metadata) -> Message:
-    return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
+    return Message(role="user", parts=[Part(kind="text", text=text)], metadata=metadata)
 
 
 MOCK_WTTR_RESPONSE = {
@@ -53,7 +55,7 @@ async def test_handle_message_returns_weather():
         mock_client_cls.return_value = instance
 
         msg = _user_msg("Beijing")
-        task = Task(task_id="t1", state=TaskState.SUBMITTED)
+        task = Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED))
         resp = await agent.handle_message(msg, task)
 
     assert resp.role == "agent"
@@ -83,7 +85,7 @@ async def test_handle_message_calls_correct_url():
         mock_client_cls.return_value = instance
 
         msg = _user_msg("Tokyo")
-        task = Task(task_id="t2", state=TaskState.SUBMITTED)
+        task = Task(id="t2", status=TaskStatus(state=TaskState.SUBMITTED))
         await agent.handle_message(msg, task)
 
     call_args = instance.get.call_args
@@ -92,7 +94,7 @@ async def test_handle_message_calls_correct_url():
 
 @pytest.mark.asyncio
 async def test_extract_text_static():
-    msg = Message(role="user", parts=[Part(type="text", text="London")])
+    msg = Message(role="user", parts=[Part(kind="text", text="London")])
     assert WeatherAgent.extract_text(msg) == "London"
 
     msg2 = Message(role="user", parts=[])

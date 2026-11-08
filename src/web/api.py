@@ -1,23 +1,36 @@
 from __future__ import annotations
+
 import uuid
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from src.agents.coordinator import Coordinator
+from src.orchestrator.dispatcher import Dispatcher
 from src.orchestrator.registry import AgentRegistry
 from src.orchestrator.router import Router
-from src.orchestrator.dispatcher import Dispatcher
-from src.agents.coordinator import Coordinator
-from src.protocol.models import Message, Part, Task, TaskState
+from src.protocol.models import Message, Part, Task
 
 router = APIRouter()
 _registry: AgentRegistry | None = None
 _coordinator: Coordinator | None = None
 
 
-def init_coordinator(registry: AgentRegistry, llm=None):
+def init_coordinator(
+    registry: AgentRegistry,
+    llm=None,
+    coordinator: Coordinator | None = None,
+) -> None:
+    """Wire the module-level coordinator used by /api/query.
+
+    Pass a pre-built ``coordinator`` to reuse one instance (scripts/start.py);
+    otherwise a default rule-first coordinator is constructed here.
+    """
     global _registry, _coordinator
     _registry = registry
+    if coordinator is not None:
+        _coordinator = coordinator
+        return
     router_obj = Router(registry=registry, llm=llm)
     dispatcher = Dispatcher(timeout=10.0, max_retries=1)
     _coordinator = Coordinator(registry=registry, router=router_obj, dispatcher=dispatcher, llm=llm)
@@ -32,7 +45,17 @@ async def health():
 async def list_agents():
     if _registry is None:
         return []
-    return [{"name": c.name, "endpoint": c.endpoint, "skills": [s.name for s in c.skills], "enabled": not _registry.is_disabled(c.name)} for c in _registry.get_all()]
+    return [
+        {
+            "name": c.name,
+            "url": c.url,
+            "description": c.description,
+            "protocolVersion": c.protocolVersion,
+            "skills": [{"id": s.id, "name": s.name, "tags": s.tags} for s in c.skills],
+            "enabled": not _registry.is_disabled(c.name),
+        }
+        for c in _registry.get_all()
+    ]
 
 
 @router.post("/api/agents/{name}/disable")
@@ -58,11 +81,13 @@ async def query(body: dict):
     if not question:
         return JSONResponse(status_code=400, content={"error": "Missing question"})
     if len(question) > 4096:
-        return JSONResponse(status_code=400, content={"error": "Question too long (max 4096 chars)"})
+        return JSONResponse(
+            status_code=400, content={"error": "Question too long (max 4096 chars)"}
+        )
     if _coordinator is None:
         return JSONResponse(status_code=503, content={"error": "Coordinator not initialized"})
-    msg = Message(role="user", parts=[Part(type="text", text=question)])
-    task = Task(task_id=str(uuid.uuid4()), state=TaskState.SUBMITTED)
+    msg = Message(role="user", parts=[Part(kind="text", text=question)])
+    task = Task(id=str(uuid.uuid4()))
     task_msg = await _coordinator.handle_message(msg, task)
     process = getattr(_coordinator, "_process_log", [])
     return {"answer": task_msg.parts[0].text if task_msg.parts else "", "process": process}

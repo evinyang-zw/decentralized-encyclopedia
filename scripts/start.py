@@ -1,4 +1,8 @@
-"""一键启动整个系统：5 个 domain agents + Coordinator + Web Server。"""
+"""一键启动整个系统：5 个 domain agents + Coordinator + Web Server。
+
+Agents 是独立进程，各自暴露 A2A JSON-RPC 端点（端口 8001–8005）；
+Coordinator 在 Web 进程内（不是独立端口），Web UI 在 http://localhost:8000。
+"""
 from __future__ import annotations
 
 import asyncio
@@ -13,73 +17,74 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(_project_root, ".env"))
 
 import httpx
 
+from src.agents.catalog import AGENT_SPECS
+from src.protocol.server import CARD_PATH
+
 
 def _init_llm():
-    """从环境变量初始化 LLM Provider，未配置则返回 None。"""
+    """从环境变量初始化 LLM Provider，未配置则返回 None（规则模式）。"""
     provider = os.getenv("LLM_PROVIDER", "").lower()
     if provider == "orca":
         from src.llm.orcarouter_provider import OrcaRouterProvider
+
         api_key = os.getenv("ORCAROUTER_API_KEY", "")
-        model = os.getenv("ORCAROUTER_MODEL")  # None 时用默认模型
+        model = os.getenv("ORCAROUTER_MODEL")
         return OrcaRouterProvider(api_key=api_key, model=model) if api_key else None
-    elif provider == "openai":
+    if provider == "openai":
         from src.llm.openai_provider import OpenAIProvider
+
         api_key = os.getenv("OPENAI_API_KEY", "")
         model = os.getenv("OPENAI_MODEL", "gpt-4o")
         return OpenAIProvider(api_key=api_key, model=model) if api_key else None
-    elif provider == "anthropic":
+    if provider == "anthropic":
         from src.llm.anthropic_provider import AnthropicProvider
+
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
         return AnthropicProvider(api_key=api_key, model=model) if api_key else None
     return None
 
 
-AGENT_SCRIPTS: list[tuple[str, str, int]] = [
-    ("src.agents.wikipedia", "WikipediaAgent", 8001),
-    ("src.agents.arxiv", "ArxivAgent", 8002),
-    ("src.agents.github", "GithubAgent", 8003),
-    ("src.agents.weather", "WeatherAgent", 8004),
-    ("src.agents.wikidata", "WikidataAgent", 8005),
-]
-
-
 def start_agents(project_root: str) -> list[tuple[str, subprocess.Popen]]:
     procs: list[tuple[str, subprocess.Popen]] = []
-    for module, cls_name, port in AGENT_SCRIPTS:
+    for spec in AGENT_SPECS:
         script = (
-            f"import sys; sys.path.insert(0, '{project_root}'); "
-            f"from {module} import {cls_name}; "
-            f"from src.protocol.models import AgentCard; "
-            f"card = AgentCard(name='{cls_name}', description='', version='1.0.0', "
-            f"skills=[], endpoint='http://localhost:{port}'); "
-            f"agent = {cls_name}(card=card); "
-            f"agent.start(port={port})"
+            f"import sys; sys.path.insert(0, {project_root!r}); "
+            f"from src.agents.catalog import get_spec as _get, build_card as _build; "
+            f"from {spec.module} import {spec.class_name} as _Agent; "
+            f"_agent = _Agent(card=_build(_get({spec.name!r}))); "
+            f"_agent.start(port={spec.port})"
         )
         p = subprocess.Popen([sys.executable, "-c", script], cwd=project_root)
-        procs.append((f"{cls_name}:{port}", p))
+        procs.append((f"{spec.name}:{spec.port}", p))
     return procs
 
 
-async def wait_for_agents(ports: list[int], timeout: float = 30.0) -> None:
+async def wait_for_agents(
+    agents: list[tuple[str, int]], timeout: float = 30.0
+) -> list[str]:
+    ready: list[str] = []
     async with httpx.AsyncClient(timeout=2.0) as client:
-        deadline = time.monotonic() + timeout
-        for port in ports:
-            url = f"http://localhost:{port}/.well-known/agent.json"
+        for name, port in agents:
+            url = f"http://localhost:{port}{CARD_PATH}"
+            deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 try:
                     resp = await client.get(url)
                     if resp.status_code == 200:
+                        ready.append(name)
                         break
                 except httpx.RequestError:
                     pass
                 await asyncio.sleep(0.3)
             else:
-                print(f"  ⚠ Agent on port {port} did not respond within {timeout}s")
+                print(f"  ⚠ {name} on port {port} did not respond within {timeout}s")
+    return ready
 
 
 async def async_main() -> None:
@@ -88,31 +93,30 @@ async def async_main() -> None:
     print("Starting domain agents (ports 8001-8005)...")
     procs = start_agents(project_root)
 
-    ports = [p for _, _, p in AGENT_SCRIPTS]
-    print("Waiting for agents to be ready...")
-    await wait_for_agents(ports)
+    ready = await wait_for_agents([(s.name, s.port) for s in AGENT_SPECS])
+    print(f"Agents ready: {len(ready)}/{len(AGENT_SPECS)}")
 
-    print("Discovering agents...")
+    print("Discovering agents via Agent Cards...")
     from src.orchestrator.registry import AgentRegistry
-    registry = AgentRegistry()
-    await registry.auto_discover([f"http://localhost:{p}" for p in ports])
 
-    from src.orchestrator.router import Router
-    from src.orchestrator.dispatcher import Dispatcher
+    registry = AgentRegistry()
+    await registry.auto_discover([f"http://localhost:{s.port}" for s in AGENT_SPECS])
+
     from src.agents.coordinator import Coordinator
+    from src.orchestrator.dispatcher import Dispatcher
+    from src.orchestrator.router import Router
     from src.web.api import init_coordinator
     from src.web.app import create_app
 
     llm = _init_llm()
-    if llm:
-        print(f"  LLM Provider: {type(llm).__name__}")
+    print(f"  LLM provider: {type(llm).__name__ if llm else 'none (rule-based mode)'}")
     router = Router(registry=registry, llm=llm)
     dispatcher = Dispatcher(timeout=10.0, max_retries=1)
-    _coordinator = Coordinator(
-        registry=registry, router=router, dispatcher=dispatcher, llm=llm,
+    coordinator = Coordinator(
+        registry=registry, router=router, dispatcher=dispatcher, llm=llm
     )
 
-    init_coordinator(registry, llm)
+    init_coordinator(registry, llm, coordinator=coordinator)
     app = create_app()
 
     shutting_down = False
@@ -123,7 +127,7 @@ async def async_main() -> None:
             return
         shutting_down = True
         print("\nShutting down...")
-        for name, p in procs:
+        for _, p in procs:
             p.terminate()
         for name, p in procs:
             try:
@@ -132,19 +136,21 @@ async def async_main() -> None:
                 p.kill()
             print(f"  Stopped {name}")
 
+    import uvicorn
+
+    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info"))
     loop = asyncio.get_running_loop()
+
     def handle_signal() -> None:
         shutdown()
         server.should_exit = True
+
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
-    import uvicorn
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
-    server = uvicorn.Server(config)
     print("\nAll systems ready!")
-    print("  Domain agents: ports 8001-8005")
-    print("  Coordinator:   port 8010")
+    print("  Domain agents: ports 8001-8005 (A2A JSON-RPC, cards at /.well-known/agent-card.json)")
+    print("  Coordinator:   in-process, served by the Web API")
     print("  Web UI:        http://localhost:8000")
     try:
         await server.serve()

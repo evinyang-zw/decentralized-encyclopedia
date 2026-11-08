@@ -50,6 +50,20 @@ ZH_EN_KEYWORDS: dict[str, str] = {
     "编译器": "compiler",
     "数据库": "database",
     "搜索引擎": "search engine",
+    # Famous entities (keeps the demo questions resolvable without an LLM)
+    "爱因斯坦": "Albert Einstein",
+    "牛顿": "Isaac Newton",
+    "图灵": "Alan Turing",
+    "达尔文": "Charles Darwin",
+    "莎士比亚": "William Shakespeare",
+    "马斯克": "Elon Musk",
+    "乔布斯": "Steve Jobs",
+    "苹果公司": "Apple Inc",
+    "微软": "Microsoft",
+    "谷歌": "Google",
+    "特斯拉": "Tesla, Inc.",
+    "英伟达": "NVIDIA",
+    "亚马逊": "Amazon",
     # Filler / query words to strip
     "的": "",
     "了": "",
@@ -97,7 +111,10 @@ class QueryTranslator:
             result = await self._llm_translate(query)
             if result:
                 return result
-        return self._dict_translate(query)
+        translated = self._dict_translate(query)
+        # Dictionary coverage is finite: if everything was stripped away, fall
+        # back to the raw query instead of sending an empty search string.
+        return translated or query.strip()
 
     @staticmethod
     def _contains_cjk(text: str) -> bool:

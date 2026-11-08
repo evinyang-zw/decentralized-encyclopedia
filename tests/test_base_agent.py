@@ -12,17 +12,17 @@ class TestBaseAgent:
         with pytest.raises(TypeError):
             BaseAgent(card=AgentCard(
                 name="test", description="test", version="1.0.0",
-                skills=[], endpoint="http://localhost:8001",
+                skills=[], url="http://localhost:8001",
             ))
 
     def test_concrete_agent_instantiation(self):
         class MyAgent(BaseAgent):
             async def handle_message(self, message: Message, task: Task) -> Message:
-                return Message(role="agent", parts=[Part(type="text", text="ok")])
+                return Message(role="agent", parts=[Part(kind="text", text="ok")])
 
         card = AgentCard(
             name="MyAgent", description="test", version="1.0.0",
-            skills=[], endpoint="http://localhost:8001",
+            skills=[], url="http://localhost:8001",
         )
         agent = MyAgent(card=card)
         assert agent.card.name == "MyAgent"

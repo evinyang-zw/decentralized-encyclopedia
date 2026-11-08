@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 
 from src.protocol.models import AgentCard
@@ -13,7 +14,7 @@ class AgentRegistry:
 
     def register_sync(self, card: AgentCard) -> None:
         self._agents[card.name] = card
-        logger.info("Registered agent: %s at %s", card.name, card.endpoint)
+        logger.info("Registered agent: %s at %s", card.name, card.url)
 
     def unregister_sync(self, name: str) -> None:
         self._agents.pop(name, None)

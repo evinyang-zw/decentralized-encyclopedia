@@ -1,8 +1,9 @@
 """BaseAgent — abstract base class for all domain agents."""
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
-from src.protocol.models import AgentCard, Message, Part, Task
+from src.protocol.models import AgentCard, Message, Task
 from src.protocol.server import A2AServer
 
 
@@ -18,7 +19,7 @@ class BaseAgent(ABC):
     @staticmethod
     def extract_text(message: Message) -> str:
         for part in message.parts:
-            if part.type == "text" and part.text:
+            if part.kind == "text" and part.text:
                 return part.text
         return ""
 

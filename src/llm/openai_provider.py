@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from openai import AsyncOpenAI
+
 from src.llm.base import LLMProvider, LLMProviderError
+
 
 class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: str, model: str = "gpt-4o"):

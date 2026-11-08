@@ -1,17 +1,62 @@
-"""A2A Server base class — FastAPI wrapper for Agent Card + JSON-RPC."""
+"""A2A server base class — FastAPI wrapper for Agent Card + JSON-RPC.
+
+Implements a subset of the A2A **v0.3** JSON-RPC binding:
+    GET  /.well-known/agent-card.json   -> AgentCard
+    POST /  (JSON-RPC 2.0)
+        message/send   -> Task
+        tasks/get      -> Task
+        tasks/cancel   -> Task
+
+Not implemented (documented in docs/protocol.md): streaming (`message/stream`),
+push notifications, `tasks/resubscribe`, extended agent card, and the A2A v1.0
+PascalCase/`supportedInterfaces` shape.
+"""
 from __future__ import annotations
+
 import time
 import uuid
 from collections import OrderedDict
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from src.protocol.models import (
-    AgentCard, Message, Part, Task, TaskState,
-    JSONRPCRequest, JSONRPCResponse,
+    TASK_NOT_CANCELABLE,
+    TASK_NOT_FOUND,
+    TERMINAL_STATES,
+    UNSUPPORTED_OPERATION,
+    AgentCard,
+    JSONRPCRequest,
+    JSONRPCResponse,
+    Message,
+    Task,
+    TaskState,
+    TaskStatus,
 )
 from src.protocol.security import A2AAuthMiddleware
+
+CARD_PATH = "/.well-known/agent-card.json"
+
+# JSON-RPC 2.0 reserved error codes
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
+METHOD_NOT_FOUND = -32601
+INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
+
+
+def rpc_result(result: dict[str, Any], req_id: int | str | None) -> dict[str, Any]:
+    return JSONRPCResponse(result=result, id=req_id).model_dump(exclude_none=True)
+
+
+def rpc_error(
+    code: int, message: str, req_id: int | str | None, data: Any = None
+) -> dict[str, Any]:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return JSONRPCResponse(error=error, id=req_id).model_dump(exclude_none=True)
 
 
 class TaskStore:
@@ -49,79 +94,107 @@ class A2AServer:
         self.tasks = TaskStore()
         self._setup_routes()
 
-    def _setup_routes(self):
-        @self.app.get("/.well-known/agent.json")
-        async def agent_card():
+    def _setup_routes(self) -> None:
+        @self.app.get(CARD_PATH)
+        async def agent_card() -> dict[str, Any]:
             return self.card.model_dump()
 
         @self.app.post("/")
-        async def handle_rpc(request: Request):
+        async def handle_rpc(request: Request) -> Any:
             if not self.auth.authenticate(request):
-                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-
-            body = await request.json()
-            req = JSONRPCRequest(**body)
+                return JSONResponse(
+                    status_code=401,
+                    content=rpc_error(INVALID_REQUEST, "Unauthorized", None),
+                )
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400,
+                    content=rpc_error(PARSE_ERROR, "Parse error", None),
+                )
+            try:
+                req = JSONRPCRequest(**body)
+            except Exception as exc:
+                req_id = body.get("id") if isinstance(body, dict) else None
+                return JSONResponse(
+                    status_code=400,
+                    content=rpc_error(INVALID_REQUEST, f"Invalid request: {exc}", req_id),
+                )
 
             if req.method == "message/send":
                 return await self._handle_message_send(req)
-            elif req.method == "task/get":
-                return await self._handle_task_get(req)
-            elif req.method == "task/cancel":
-                return await self._handle_task_cancel(req)
-            else:
-                return JSONRPCResponse(
-                    error={"code": -32601, "message": f"Method not found: {req.method}"},
-                    id=req.id,
-                ).model_dump()
-
-    async def _handle_message_send(self, req: JSONRPCRequest) -> dict:
-        params = req.params
-        message = Message(**params.get("message", {}))
-        task_id = params.get("task_id", str(uuid.uuid4()))
-
-        if task_id not in self.tasks:
-            self.tasks.put(task_id, Task(task_id=task_id, state=TaskState.WORKING))
-
-        task = self.tasks.get(task_id)
-        task.messages.append(message)
-
-        try:
-            response = await self.handle_message(message, task)
-            task.messages.append(response)
-            task.state = TaskState.COMPLETED
-        except Exception as e:
-            task.state = TaskState.FAILED
-            response = Message(
-                role="agent",
-                parts=[Part(type="text", text=f"Error: {e}")],
+            if req.method == "tasks/get":
+                return self._handle_tasks_get(req)
+            if req.method == "tasks/cancel":
+                return self._handle_tasks_cancel(req)
+            return JSONResponse(
+                status_code=200,
+                content=rpc_error(METHOD_NOT_FOUND, f"Method not found: {req.method}", req.id),
             )
 
-        return JSONRPCResponse(
-            result={"task_id": task_id, "messages": [m.model_dump() for m in task.messages]},
-            id=req.id,
-        ).model_dump()
+    # ------------------------------------------------------------ handlers
+    async def _handle_message_send(self, req: JSONRPCRequest) -> dict[str, Any]:
+        params = req.params
+        raw_message = params.get("message")
+        if not isinstance(raw_message, dict):
+            return rpc_error(INVALID_PARAMS, "params.message is required", req.id)
+        try:
+            message = Message(**raw_message)
+        except Exception as exc:
+            return rpc_error(INVALID_PARAMS, f"Invalid message: {exc}", req.id)
 
-    async def _handle_task_get(self, req: JSONRPCRequest) -> dict:
-        task_id = req.params.get("task_id", "")
+        task_id = message.taskId or str(uuid.uuid4())
         task = self.tasks.get(task_id)
-        if not task:
-            return JSONRPCResponse(
-                error={"code": -32602, "message": "Task not found"}, id=req.id
-            ).model_dump()
-        return JSONRPCResponse(result=task.model_dump(), id=req.id).model_dump()
+        if task is None:
+            task = Task(id=task_id, contextId=message.contextId or task_id)
+            self.tasks.put(task_id, task)
+        elif task.status.state in TERMINAL_STATES:
+            return rpc_error(
+                UNSUPPORTED_OPERATION,
+                f"Task {task_id} is in terminal state {task.status.state.value}",
+                req.id,
+            )
 
-    async def _handle_task_cancel(self, req: JSONRPCRequest) -> dict:
-        task_id = req.params.get("task_id", "")
-        task = self.tasks.get(task_id)
-        if task:
-            task.state = TaskState.CANCELED
-        return JSONRPCResponse(
-            result={"task_id": task_id, "state": "canceled"}, id=req.id
-        ).model_dump()
+        task.history.append(message)
+        task.status = TaskStatus(state=TaskState.WORKING)
+        try:
+            response = await self.handle_message(message, task)
+        except Exception as exc:  # surface a failed task, never a 200 with garbage
+            error_message = Message(role="agent", parts=[], metadata={"error": str(exc)})
+            task.status = TaskStatus(state=TaskState.FAILED, message=error_message)
+            return rpc_result(task.model_dump(), req.id)
 
+        task.history.append(response)
+        task.status = TaskStatus(state=TaskState.COMPLETED, message=response)
+        return rpc_result(task.model_dump(), req.id)
+
+    def _handle_tasks_get(self, req: JSONRPCRequest) -> dict[str, Any]:
+        task_id = req.params.get("id") or req.params.get("taskId") or req.params.get("task_id")
+        task = self.tasks.get(task_id) if task_id else None
+        if task is None:
+            return rpc_error(TASK_NOT_FOUND, f"Task not found: {task_id}", req.id)
+        return rpc_result(task.model_dump(), req.id)
+
+    def _handle_tasks_cancel(self, req: JSONRPCRequest) -> dict[str, Any]:
+        task_id = req.params.get("id") or req.params.get("taskId") or req.params.get("task_id")
+        task = self.tasks.get(task_id) if task_id else None
+        if task is None:
+            return rpc_error(TASK_NOT_FOUND, f"Task not found: {task_id}", req.id)
+        if task.status.state in TERMINAL_STATES:
+            return rpc_error(
+                TASK_NOT_CANCELABLE,
+                f"Task {task_id} is not cancelable in state {task.status.state.value}",
+                req.id,
+            )
+        task.status = TaskStatus(state=TaskState.CANCELED)
+        return rpc_result(task.model_dump(), req.id)
+
+    # ------------------------------------------------------------ overridable
     async def handle_message(self, message: Message, task: Task) -> Message:
         raise NotImplementedError
 
-    def start(self, host: str = "0.0.0.0", port: int = 8001):
+    def start(self, host: str = "0.0.0.0", port: int = 8001) -> None:
         import uvicorn
+
         uvicorn.run(self.app, host=host, port=port)

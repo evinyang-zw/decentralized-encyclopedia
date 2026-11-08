@@ -1,12 +1,13 @@
 """Tests for LLM layer."""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from src.llm.base import LLMProvider, LLMProviderError
 from src.llm.factory import create_llm_provider
-from src.llm.prompts import DECOMPOSE_PROMPT, AGGREGATE_PROMPT, ROUTE_PROMPT
+from src.llm.prompts import AGGREGATE_PROMPT, DECOMPOSE_PROMPT, ROUTE_PROMPT
 
 
 class TestLLMProvider:

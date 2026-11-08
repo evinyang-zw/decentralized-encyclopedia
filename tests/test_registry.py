@@ -8,8 +8,8 @@ from src.protocol.models import AgentCard, Skill
 def _card(name: str, skills: list[str]) -> AgentCard:
     return AgentCard(
         name=name, description=f"{name} agent", version="1.0.0",
-        skills=[Skill(name=s, description=s, input_schema={}, output_schema={}) for s in skills],
-        endpoint="http://localhost:8001",
+        skills=[Skill(id=s, name=s, description=s) for s in skills],
+        url="http://localhost:8001",
     )
 
 

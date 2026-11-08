@@ -1,5 +1,6 @@
 """A2A API Key authentication."""
 from __future__ import annotations
+
 import hmac
 from typing import Any
 

@@ -1,7 +1,11 @@
 from __future__ import annotations
+
 from typing import Any
+
 from anthropic import AsyncAnthropic
+
 from src.llm.base import LLMProvider, LLMProviderError
+
 
 class AnthropicProvider(LLMProvider):
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
@@ -17,7 +21,11 @@ class AnthropicProvider(LLMProvider):
             else:
                 anthropic_messages.append(msg)
         try:
-            params: dict[str, Any] = {"model": self._model, "max_tokens": 4096, "messages": anthropic_messages}
+            params: dict[str, Any] = {
+                "model": self._model,
+                "max_tokens": 4096,
+                "messages": anthropic_messages,
+            }
             if system_msg:
                 params["system"] = system_msg
             resp = await self._client.messages.create(**params)

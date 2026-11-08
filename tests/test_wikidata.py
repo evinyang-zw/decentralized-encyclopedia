@@ -1,16 +1,18 @@
 """Tests for WikidataAgent with language-aware search."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.agents.wikidata import WikidataAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 def _make_card() -> AgentCard:
     return AgentCard(
         name="WikidataAgent", description="Query knowledge graph", version="1.0.0",
-        skills=[], endpoint="http://localhost:8005",
+        skills=[], url="http://localhost:8005",
     )
 
 
@@ -19,7 +21,7 @@ def _make_agent() -> WikidataAgent:
 
 
 def _user_msg(text: str, **metadata) -> Message:
-    return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
+    return Message(role="user", parts=[Part(kind="text", text=text)], metadata=metadata)
 
 
 MOCK_WIKIDATA_SEARCH = {
@@ -41,12 +43,12 @@ async def test_handle_message_chinese_uses_zh():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("量子计算"), Task(task_id="t1", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("量子计算"), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     call_args = instance.get.call_args
     assert call_args[1]["params"]["language"] == "zh"
     assert resp.role == "agent"
-    assert any("Found" in p.text for p in resp.parts if p.type == "text")
-    data = next((p.data for p in resp.parts if p.type == "data"), None)
+    assert any("Found" in p.text for p in resp.parts if p.kind == "text")
+    data = next((p.data for p in resp.parts if p.kind == "data"), None)
     assert data is not None
 
 
@@ -62,7 +64,7 @@ async def test_handle_message_english_uses_en():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        await agent.handle_message(_user_msg("Einstein"), Task(task_id="t1", state=TaskState.SUBMITTED))
+        await agent.handle_message(_user_msg("Einstein"), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     call_args = instance.get.call_args
     assert call_args[1]["params"]["language"] == "en"
 
@@ -79,9 +81,10 @@ async def test_handle_message_fallback():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("爱因斯坦"), Task(task_id="t2", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("爱因斯坦"), Task(id="t2", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert "Found knowledge about Albert Einstein" in resp.parts[0].text
-    assert resp.parts[1].data["type"] == "Person"
+    assert resp.parts[1].data["source"] == "local-mock"
+    assert resp.parts[1].data["results"][0]["type"] == "Person"
 
 
 @pytest.mark.asyncio
@@ -96,8 +99,8 @@ async def test_handle_message_not_found():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("NonExistentXYZ123"), Task(task_id="t3", state=TaskState.SUBMITTED))
-    assert any("未找到" in p.text for p in resp.parts if p.type == "text")
+        resp = await agent.handle_message(_user_msg("NonExistentXYZ123"), Task(id="t3", status=TaskStatus(state=TaskState.SUBMITTED)))
+    assert any("未找到" in p.text for p in resp.parts if p.kind == "text")
 
 
 def test_load_fallback_data():
@@ -115,5 +118,5 @@ def test_load_fallback_missing_file(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_extract_text_static():
-    msg = Message(role="user", parts=[Part(type="text", text="query")])
+    msg = Message(role="user", parts=[Part(kind="text", text="query")])
     assert WikidataAgent.extract_text(msg) == "query"

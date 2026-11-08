@@ -1,7 +1,7 @@
 """Tests for prompt templates."""
 from __future__ import annotations
 
-from src.llm.prompts import DECOMPOSE_PROMPT, AGGREGATE_PROMPT, ROUTE_PROMPT
+from src.llm.prompts import AGGREGATE_PROMPT, DECOMPOSE_PROMPT, ROUTE_PROMPT
 
 
 class TestPrompts:

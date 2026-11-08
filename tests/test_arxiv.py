@@ -1,16 +1,18 @@
 """Tests for ArxivAgent with Chinese translation support."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from src.agents.arxiv import ArxivAgent
-from src.protocol.models import AgentCard, Message, Part, Task, TaskState
+from src.protocol.models import AgentCard, Message, Part, Task, TaskState, TaskStatus
 
 
 def _make_card() -> AgentCard:
     return AgentCard(
         name="ArxivAgent", description="Search arXiv", version="1.0.0",
-        skills=[], endpoint="http://localhost:8002",
+        skills=[], url="http://localhost:8002",
     )
 
 
@@ -19,7 +21,7 @@ def _make_agent() -> ArxivAgent:
 
 
 def _user_msg(text: str, **metadata) -> Message:
-    return Message(role="user", parts=[Part(type="text", text=text)], metadata=metadata)
+    return Message(role="user", parts=[Part(kind="text", text=text)], metadata=metadata)
 
 
 MOCK_ARXIV_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -45,7 +47,7 @@ async def test_handle_message_returns_results():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("transformer", limit=5), Task(task_id="t1", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("transformer", limit=5), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert resp.role == "agent"
     assert len(resp.parts) == 2
     assert "Found 1 papers" in resp.parts[0].text
@@ -63,7 +65,7 @@ async def test_chinese_query_translated():
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = instance
-        resp = await agent.handle_message(_user_msg("量子计算论文"), Task(task_id="t1", state=TaskState.SUBMITTED))
+        resp = await agent.handle_message(_user_msg("量子计算论文"), Task(id="t1", status=TaskStatus(state=TaskState.SUBMITTED)))
     assert resp.role == "agent"
     # The translated query should contain "quantum computing"
     assert "quantum" in resp.parts[0].text.lower()
@@ -77,5 +79,5 @@ def test_parse_arxiv_response():
 
 @pytest.mark.asyncio
 async def test_extract_text_static():
-    msg = Message(role="user", parts=[Part(type="text", text="query")])
+    msg = Message(role="user", parts=[Part(kind="text", text="query")])
     assert ArxivAgent.extract_text(msg) == "query"

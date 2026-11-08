@@ -1,8 +1,9 @@
 """Tests for A2A authentication middleware."""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from src.protocol.security import A2AAuthMiddleware
 
