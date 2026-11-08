@@ -21,7 +21,7 @@ JSON-RPC 子集**（Agent Card 发现 / `message/send` / `tasks/get` / `tasks/ca
 | 5 个真实外部数据源（DBpedia / arXiv / GitLab / wttr.in / Wikidata）的 Agent 化封装 | 不是"去中心化 P2P 网络"——实际是**中心调度（hub-and-spoke）**，Agent 之间不互相通信 |
 | 一个可运行的 A2A **v0.3 风格子集**协议层（Card 发现 + 3 个 JSON-RPC 方法 + 状态机 + 错误码） | **不是 A2A v1.0 兼容实现**（方法名/数据模型/流式均未迁移，逐项列在 `docs/protocol.md`） |
 | 121→150 个离线测试、CI（ruff + mypy + coverage 门禁）、契约测试 | 不是生产级：无鉴权体系、无流式、无持久化任务存储、无水平扩展 |
-| 一套 4 配置的跨域评测（见 `docs/eval-report.md`） | 不是"多 Agent 一定更好"的营销——评测显示它只在跨源问题上占优，代价是延迟与调用次数 |
+| 一套 4 配置、18 题的跨域评测（见 `docs/eval-report.md`） | 不是"多 Agent 一定更好"的营销——评测显示它只在跨源问题上占优，代价是延迟与调用次数 |
 
 **架构真相**：Coordinator 是 Web 进程内的对象（**没有独立端口**），5 个 domain Agent 是独立进程
 （8001–8005），只与 Coordinator 通信。项目名是历史遗留，架构以本节为准。
@@ -74,27 +74,34 @@ JSON-RPC 子集**（Agent Card 发现 / `message/send` / `tasks/get` / `tasks/ca
 
 ## 评测：多 Agent 到底赢在哪
 
-评测设计：15–20 条跨领域中文问题（单源 / 跨源 / 源缺失 / 模糊），对 **4 种配置**做同题对照，
-聚合层保持一致，只改变路由与调度方式：
+评测设计：**18 条跨领域中文问题**（单源 / 跨源 / 源缺失 / 歧义），对 **4 种配置**做同题对照；
+聚合层保持一致，只改变路由与调度方式（`single` 单 Agent 直答 / `multi_serial` 多源串行 /
+`multi_parallel` 多源并行（产品实际路径）/ `all_agents` 固定 5 源上限）。无 LLM、无 LLM judge，
+指标全部确定性可复算。完整报告见 [`docs/eval-report.md`](docs/eval-report.md)。
 
-| 配置 | 含义 |
-|---|---|
-| `single` | 只调用规则命中的第 1 个 Agent（单 Agent 直答基线） |
-| `multi_serial` | 命中多个 Agent，串行调用 |
-| `multi_parallel` | 命中多个 Agent，并行调用（**系统实际路径**） |
-| `all_agents` | 固定调用全部 5 个 Agent（成本上限对照） |
+| 指标（18 题） | single | multi_serial | **multi_parallel** | all_agents |
+|---|---|---|---|---|
+| source_coverage（期望源真实命中率） | 39.3% | 50.0% | **50.0%** | 50.0% |
+| keyword_hit（内容相关性） | 46.4% | 60.7% | **60.7%** | 60.7% |
+| 平均 Agent 调用 / 题 | 1.00 | 1.89 | **1.89** | 5.00 |
+| 延迟 p50 / p95（ms） | 964 / 10003 | 2422 / 7319 | **1868 / 6426** | 6010 / 6612 |
 
-指标：数据源覆盖率、关键词命中率、有效结果率、p50/p95 延迟、平均 Agent 调用次数、各数据源
-real/mock/error 状态。**没有 LLM judge，不报"答案正确率"**——这是刻意选择：宁可报能复现的检索类指标，
-也不编一个不可复现的准确率。
+**三个结论（含负面）**：
 
-结果与方法见 [`docs/eval-report.md`](docs/eval-report.md)，运行方式：
+1. **多 Agent 的结构化收益只出现在跨源题**：`cross_source` 类 coverage 50% → 80%，
+   keyword_hit 50% → 90%——收益来自"多个源同时真的返回内容"，而不是更深的推理。
+2. **并行只省时间，不涨覆盖**：与串行相比 coverage/keyword 完全一致，p50 从 2422ms 降到 1868ms。
+3. **多 Agent 不是免费的**：`ambiguous` 类路由 precision 100% → 50%、调用翻倍但覆盖不升；
+   `missing_source` 类**100% 仍返回非空结果**——规则路由没有弃答能力，这是明确的下一步（需要
+   相关性判定，而不只是"有没有内容"）。
 
-```bash
-uv run python -m eval.runner          # 4 配置全跑，约 3–5 分钟（依赖外部免费 API）
-```
-
----
+> ⚠️ 口径说明：评测使用 live 公网 API，本轮外部限流明显（arXiv 429、GitLab 429），
+> 失败率约 38.6%；为在 5 分钟内完成 4 配置对照，评测关闭了重试（产品默认 `max_retries=1`），
+> 因此**绝对覆盖偏低、可作为配置间相对比较**。失败样本全部保留，未剔除。
+>
+> ```bash
+> uv run python -m eval.runner      # 复现：约 4–5 分钟
+> ```
 
 ## 快速开始
 
