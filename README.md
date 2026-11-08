@@ -1,5 +1,8 @@
 # Decentralized Encyclopedia
 
+[![CI](https://github.com/evinyang-zw/decentralized-encyclopedia/actions/workflows/ci.yml/badge.svg)](https://github.com/evinyang-zw/decentralized-encyclopedia/actions/workflows/ci.yml)
+[![A2A v0.3 subset](https://img.shields.io/badge/protocol-A2A%20v0.3%20subset-1f3864)](#协议实现范围摘要)
+
 **一个多 Agent 协作的跨领域知识问答系统**：5 个领域 Agent 各自独立进程、通过 **A2A v0.3 风格的
 JSON-RPC 子集**（Agent Card 发现 / `message/send` / `tasks/get` / `tasks/cancel` / Task 状态机）
 接受调度，由一个中心 Coordinator 做路由、并行分发与结果聚合；回答里保留来源与失败信息。
